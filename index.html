@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2-Player Snake</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>2-Player Snake</h1>
+    <div class="game-container">
+        <div class="ui-panel">
+            <h2>Player 1</h2>
+            <div class="score" id="score1">Score: 0</div>
+            <div class="controls">
+                <p><strong>Controls:</strong></p>
+                <p>W - Up</p>
+                <p>S - Down</p>
+                <p>A - Left</p>
+                <p>D - Right</p>
+            </div>
+        </div>
+
+        <canvas id="gameCanvas" width="600" height="600"></canvas>
+
+        <div class="ui-panel">
+            <h2>Player 2</h2>
+            <div class="score" id="score2">Score: 0</div>
+            <div class="controls">
+                <p><strong>Controls:</strong></p>
+                <p>↑ - Up</p>
+                <p>↓ - Down</p>
+                <p>← - Left</p>
+                <p>→ - Right</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="game-controls">
+        <div class="mode-select">
+            <button id="classic-btn" class="active">Classic Mode</button>
+            <button id="modern-btn">Modern Mode</button>
+        </div>
+        <button id="start-btn">Start Game</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
