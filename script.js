@@ -169,13 +169,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const futureSnakeB = [nextPosB, ...snake];
             const futureMovesB = getPossibleMoves(futureSnakeB, otherSnake).length;
             
-            return futureMovesB - futureMovesA;
+            return futureMovesB - futureMovesA; // Sort by most future moves
         });
 
         return possibleMoves[0];
     }
     
-    // AI 4: A* Pathfinding (Corrected and Safe)
+    // AI 4: A* Pathfinding (With Improved Safety and Fallback)
     function aiAStar(snake, otherSnake, food, direction) {
         const obstacles = new Set([...snake.slice(1).map(p => `${p.x},${p.y}`), ...otherSnake.map(p => `${p.x},${p.y}`)]);
         const startNode = snake[0];
@@ -183,33 +183,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let openSet = [startNode];
         let cameFrom = new Map();
-        let gScore = new Map();
-        let fScore = new Map();
+        let gScore = new Map(); // Cost from start to current
+        let fScore = new Map(); // Total estimated cost (gScore + heuristic)
 
         const startKey = `${startNode.x},${startNode.y}`;
         gScore.set(startKey, 0);
         fScore.set(startKey, Math.hypot(startNode.x - endNode.x, startNode.y - endNode.y));
         
-        // *** FIX: Add an iteration limit to prevent freezing ***
         let iterations = 0;
-        const maxIterations = 1500; // Safeguard
+        const maxIterations = 2000; // Increased safeguard for complex paths
 
         while (openSet.length > 0) {
-            // *** FIX: Bail out if search is too long ***
             if (iterations++ > maxIterations) {
-                break; // Path is too complex, abort search
+                // Pathfinding is taking too long, likely a complex or impossible path. Fall back to survival.
+                break; 
             }
 
             // Find the node in openSet having the lowest fScore
             let lowestIndex = 0;
             for (let i = 1; i < openSet.length; i++) {
-                if (fScore.get(`${openSet[i].x},${openSet[i].y}`) < fScore.get(`${openSet[lowestIndex].x},${openSet[lowestIndex].y}`)) {
+                if ((fScore.get(`${openSet[i].x},${openSet[i].y}`) || Infinity) < (fScore.get(`${openSet[lowestIndex].x},${openSet[lowestIndex].y}`) || Infinity)) {
                     lowestIndex = i;
                 }
             }
             let current = openSet[lowestIndex];
             
-            // If we found the path
+            // If we found the path to the food
             if (current.x === endNode.x && current.y === endNode.y) {
                 let path = [];
                 let temp = current;
@@ -223,7 +222,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Move current node from open to closed set by removing it
             openSet.splice(lowestIndex, 1);
             
             const neighbors = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].map(d => ({x: current.x+d.x, y: current.y+d.y}));
@@ -233,7 +231,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (neighbor.x < 0 || neighbor.x >= CANVAS_WIDTH_UNITS || neighbor.y < 0 || neighbor.y >= CANVAS_HEIGHT_UNITS) continue;
                 if (obstacles.has(neighborKey)) continue;
 
-                let tentativeGScore = gScore.get(`${current.x},${current.y}`) + 1;
+                // *** IMPROVEMENT 1: ADD PENALTY FOR TIGHT SPACES ***
+                // This encourages the AI to prefer open areas and avoid narrow corridors that could be traps.
+                let freeNeighbors = 0;
+                const neighborNeighbors = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].map(d => ({x: neighbor.x+d.x, y: neighbor.y+d.y}));
+                for (const nn of neighborNeighbors) {
+                    const nnKey = `${nn.x},${nn.y}`;
+                    if (nn.x >= 0 && nn.x < CANVAS_WIDTH_UNITS && nn.y >= 0 && nn.y < CANVAS_HEIGHT_UNITS && !obstacles.has(nnKey)) {
+                        freeNeighbors++;
+                    }
+                }
+                // The penalty is higher for fewer free neighbors. A weight of 5 means the AI
+                // would rather take a 5-step detour than enter a 1-tile-wide corridor.
+                const penalty = Math.max(0, 3 - freeNeighbors) * 5;
+                
+                let tentativeGScore = (gScore.get(`${current.x},${current.y}`) || Infinity) + 1 + penalty;
+
                 if (tentativeGScore < (gScore.get(neighborKey) || Infinity)) {
                     cameFrom.set(neighborKey, current);
                     gScore.set(neighborKey, tentativeGScore);
@@ -245,8 +258,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // If A* fails (no path or too complex), fall back to a safer algorithm
-        return aiSmartGreedy(snake, otherSnake, food, direction);
+        // *** IMPROVEMENT 2: BETTER FALLBACK STRATEGY ***
+        // If A* fails (no path found or too complex), fall back to the Defensive AI.
+        // The Defensive AI prioritizes survival and maximizing space, which is the best
+        // thing to do when the path to the food is blocked or unclear.
+        // This prevents the bot from getting stuck or making a bad move when the apple moves.
+        return aiDefensive(snake, otherSnake, food, direction);
     }
     
     // --- Game Loop ---
@@ -271,6 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function moveSnake(snake, direction, nextDirection, playerNum) {
+        // Prevent snake from reversing on itself
         if (nextDirection && ((nextDirection.x !== 0 && direction.x !== -nextDirection.x) || (nextDirection.y !== 0 && direction.y !== -nextDirection.y))) {
             Object.assign(direction, nextDirection);
         }
@@ -283,7 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let ateFood = false;
         if (gameMode === 'classic') {
              if (head.x === food.x && head.y === food.y) ateFood = true;
-        } else {
+        } else { // Modern mode collision detection
             const dx = (head.x * SNAKE_SIZE + SNAKE_SIZE / 2) - (food.x * GRID_SIZE + GRID_SIZE / 2);
             const dy = (head.y * SNAKE_SIZE + SNAKE_SIZE / 2) - (food.y * GRID_SIZE + GRID_SIZE / 2);
             if (Math.sqrt(dx*dx + dy*dy) < SNAKE_SIZE / 2 + FOOD_RADIUS) ateFood = true;
@@ -308,12 +326,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const head1 = snake1[0];
         const head2 = snake2[0];
         
+        // Wall collisions
         if (head1.x < 0 || head1.x >= CANVAS_WIDTH_UNITS || head1.y < 0 || head1.y >= CANVAS_HEIGHT_UNITS) return gameOver('Player 2 Wins! Player 1 hit a wall.');
         if (head2.x < 0 || head2.x >= CANVAS_WIDTH_UNITS || head2.y < 0 || head2.y >= CANVAS_HEIGHT_UNITS) return gameOver('Player 1 Wins! Player 2 hit a wall.');
+        
+        // Self collisions
         if (checkSelfCollision(snake1)) return gameOver('Player 2 Wins! Player 1 crashed into itself.');
         if (checkSelfCollision(snake2)) return gameOver('Player 1 Wins! Player 2 crashed into itself.');
+
+        // Snake-on-snake collisions
         if (checkSnakeCollision(head1, snake2)) return gameOver('Player 2 Wins! Player 1 crashed into Player 2.');
         if (checkSnakeCollision(head2, snake1)) return gameOver('Player 1 Wins! Player 2 crashed into Player 1.');
+
+        // Head-on collision
         if (head1.x === head2.x && head1.y === head2.y) return gameOver("It's a tie! Head-on collision.");
     }
 
@@ -344,10 +369,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function draw() {
         ctx.fillStyle = '#1c1f24';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw food
         ctx.fillStyle = '#c678dd';
         ctx.beginPath();
         ctx.arc(food.x * GRID_SIZE + GRID_SIZE / 2, food.y * GRID_SIZE + GRID_SIZE / 2, FOOD_RADIUS, 0, Math.PI * 2);
         ctx.fill();
+
+        // Draw snakes
         drawSnake(snake1, '#61afef');
         drawSnake(snake2, '#e5c07b');
     }
@@ -355,11 +384,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function drawSnake(snake, color) {
         ctx.fillStyle = color;
         if (gameMode === 'classic') {
-            for (const part of snake) ctx.fillRect(part.x * GRID_SIZE, part.y * GRID_SIZE, GRID_SIZE - 2, GRID_SIZE - 2);
-        } else {
+            for (const part of snake) {
+                 ctx.fillRect(part.x * GRID_SIZE, part.y * GRID_SIZE, GRID_SIZE - 2, GRID_SIZE - 2);
+            }
+        } else { // Modern mode drawing
             for (let i = 0; i < snake.length; i++) {
                 const part = snake[i];
-                const size = SNAKE_SIZE * (1 - i * 0.02);
+                const size = SNAKE_SIZE * (1 - i * 0.02); // Tapering effect
                 ctx.beginPath();
                 ctx.arc(part.x * SNAKE_SIZE + SNAKE_SIZE/2, part.y * SNAKE_SIZE + SNAKE_SIZE/2, Math.max(size/2, 2), 0, Math.PI * 2);
                 ctx.fill();
