@@ -95,35 +95,30 @@ document.addEventListener('DOMContentLoaded', () => {
     function getPossibleMoves(snake, otherSnake) {
         const head = snake[0];
         const possibleMoves = [
-            { x: 0, y: -1, name: 'up' }, { x: 0, y: 1, name: 'down' },
-            { x: -1, y: 0, name: 'left' }, { x: 1, y: 0, name: 'right' },
+            { x: 0, y: -1 }, { x: 0, y: 1 },
+            { x: -1, y: 0 }, { x: 1, y: 0 },
         ];
         
         const obstacles = new Set([...snake.map(p => `${p.x},${p.y}`), ...otherSnake.map(p => `${p.x},${p.y}`)]);
 
         return possibleMoves.filter(move => {
             const nextPos = { x: head.x + move.x, y: head.y + move.y };
-            // Wall collision
             if (nextPos.x < 0 || nextPos.x >= CANVAS_WIDTH_UNITS || nextPos.y < 0 || nextPos.y >= CANVAS_HEIGHT_UNITS) return false;
-            // Body collision
             if (obstacles.has(`${nextPos.x},${nextPos.y}`)) return false;
             return true;
         });
     }
 
-    // AI 0: Simple random turner to avoid imminent death
     function aiRandom(snake, otherSnake, food, direction) {
         let possibleMoves = getPossibleMoves(snake, otherSnake);
-        if (possibleMoves.length === 0) return direction; // Go straight to death
+        if (possibleMoves.length === 0) return direction; 
 
-        // Try to keep going straight
         const straightMove = possibleMoves.find(m => m.x === direction.x && m.y === direction.y);
-        if (straightMove && Math.random() > 0.1) return straightMove; // 90% chance to go straight
+        if (straightMove && Math.random() > 0.1) return straightMove;
 
         return possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
     }
 
-    // AI 1: Always moves toward the food (greedy)
     function aiGreedy(snake, otherSnake, food, direction) {
         const head = snake[0];
         let possibleMoves = getPossibleMoves(snake, otherSnake);
@@ -138,13 +133,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return possibleMoves[0];
     }
     
-    // AI 2: Greedy, but won't move into a spot with 0 future moves
     function aiSmartGreedy(snake, otherSnake, food, direction) {
         const head = snake[0];
         let possibleMoves = getPossibleMoves(snake, otherSnake);
         if (possibleMoves.length === 0) return direction;
 
-        // Filter out moves that lead to an immediate trap
         const safeMoves = possibleMoves.filter(move => {
             const nextPos = { x: head.x + move.x, y: head.y + move.y };
             const futureSnake = [nextPos, ...snake];
@@ -162,13 +155,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return movesToConsider[0];
     }
 
-    // AI 3: Tries to maximize its available space, goes for food only if it's safe
     function aiDefensive(snake, otherSnake, food, direction) {
         const head = snake[0];
         let possibleMoves = getPossibleMoves(snake, otherSnake);
         if (possibleMoves.length === 0) return direction;
 
-        // Choose the move that leads to the most future options
         possibleMoves.sort((a, b) => {
             const nextPosA = { x: head.x + a.x, y: head.y + a.y };
             const futureSnakeA = [nextPosA, ...snake];
@@ -184,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return possibleMoves[0];
     }
     
-    // AI 4: A* Pathfinding to find the shortest path to food
+    // AI 4: A* Pathfinding (Corrected and Safe)
     function aiAStar(snake, otherSnake, food, direction) {
         const obstacles = new Set([...snake.slice(1).map(p => `${p.x},${p.y}`), ...otherSnake.map(p => `${p.x},${p.y}`)]);
         const startNode = snake[0];
@@ -192,19 +183,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let openSet = [startNode];
         let cameFrom = new Map();
-
         let gScore = new Map();
-        gScore.set(`${startNode.x},${startNode.y}`, 0);
-
         let fScore = new Map();
-        fScore.set(`${startNode.x},${startNode.y}`, Math.hypot(startNode.x - endNode.x, startNode.y - endNode.y));
+
+        const startKey = `${startNode.x},${startNode.y}`;
+        gScore.set(startKey, 0);
+        fScore.set(startKey, Math.hypot(startNode.x - endNode.x, startNode.y - endNode.y));
+        
+        // *** FIX: Add an iteration limit to prevent freezing ***
+        let iterations = 0;
+        const maxIterations = 1500; // Safeguard
 
         while (openSet.length > 0) {
-            openSet.sort((a, b) => fScore.get(`${a.x},${a.y}`) - fScore.get(`${b.x},${b.y}`));
-            let current = openSet.shift();
+            // *** FIX: Bail out if search is too long ***
+            if (iterations++ > maxIterations) {
+                break; // Path is too complex, abort search
+            }
 
+            // Find the node in openSet having the lowest fScore
+            let lowestIndex = 0;
+            for (let i = 1; i < openSet.length; i++) {
+                if (fScore.get(`${openSet[i].x},${openSet[i].y}`) < fScore.get(`${openSet[lowestIndex].x},${openSet[lowestIndex].y}`)) {
+                    lowestIndex = i;
+                }
+            }
+            let current = openSet[lowestIndex];
+            
+            // If we found the path
             if (current.x === endNode.x && current.y === endNode.y) {
-                // Reconstruct path
                 let path = [];
                 let temp = current;
                 while (cameFrom.has(`${temp.x},${temp.y}`)) {
@@ -212,29 +218,34 @@ document.addEventListener('DOMContentLoaded', () => {
                     temp = cameFrom.get(`${temp.x},${temp.y}`);
                 }
                 if (path.length > 0) {
-                    return { x: path[0].x - startNode.x, y: path[0].y - startNode.y };
+                    const nextStep = path[0];
+                    return { x: nextStep.x - startNode.x, y: nextStep.y - startNode.y };
                 }
             }
 
+            // Move current node from open to closed set by removing it
+            openSet.splice(lowestIndex, 1);
+            
             const neighbors = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].map(d => ({x: current.x+d.x, y: current.y+d.y}));
             
             for (const neighbor of neighbors) {
+                const neighborKey = `${neighbor.x},${neighbor.y}`;
                 if (neighbor.x < 0 || neighbor.x >= CANVAS_WIDTH_UNITS || neighbor.y < 0 || neighbor.y >= CANVAS_HEIGHT_UNITS) continue;
-                if (obstacles.has(`${neighbor.x},${neighbor.y}`)) continue;
+                if (obstacles.has(neighborKey)) continue;
 
                 let tentativeGScore = gScore.get(`${current.x},${current.y}`) + 1;
-                if (tentativeGScore < (gScore.get(`${neighbor.x},${neighbor.y}`) || Infinity)) {
-                    cameFrom.set(`${neighbor.x},${neighbor.y}`, current);
-                    gScore.set(`${neighbor.x},${neighbor.y}`, tentativeGScore);
-                    fScore.set(`${neighbor.x},${neighbor.y}`, tentativeGScore + Math.hypot(neighbor.x - endNode.x, neighbor.y - endNode.y));
-                    if (!openSet.find(n => n.x === neighbor.x && n.y === neighbor.y)) {
+                if (tentativeGScore < (gScore.get(neighborKey) || Infinity)) {
+                    cameFrom.set(neighborKey, current);
+                    gScore.set(neighborKey, tentativeGScore);
+                    fScore.set(neighborKey, tentativeGScore + Math.hypot(neighbor.x - endNode.x, neighbor.y - endNode.y));
+                    if (!openSet.some(n => n.x === neighbor.x && n.y === neighbor.y)) {
                         openSet.push(neighbor);
                     }
                 }
             }
         }
         
-        // If A* fails (no path), fall back to a safer algorithm
+        // If A* fails (no path or too complex), fall back to a safer algorithm
         return aiSmartGreedy(snake, otherSnake, food, direction);
     }
     
@@ -250,7 +261,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const speed = gameMode === 'classic' ? 5 : 1;
         if (gameFrame++ % speed !== 0) return;
         
-        // Update bot moves if active
         if (p1BotActive) nextDirection1 = aiAlgorithms[currentAiIndex].func(snake1, snake2, food, direction1);
         if (p2BotActive) nextDirection2 = aiAlgorithms[currentAiIndex].func(snake2, snake1, food, direction2);
 
@@ -261,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function moveSnake(snake, direction, nextDirection, playerNum) {
-        if ((nextDirection.x !== 0 && direction.x !== -nextDirection.x) || (nextDirection.y !== 0 && direction.y !== -nextDirection.y)) {
+        if (nextDirection && ((nextDirection.x !== 0 && direction.x !== -nextDirection.x) || (nextDirection.y !== 0 && direction.y !== -nextDirection.y))) {
             Object.assign(direction, nextDirection);
         }
 
@@ -293,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Collision & Drawing (Mostly Unchanged) ---
+    // --- Collision & Drawing ---
     function checkCollisions() {
         const head1 = snake1[0];
         const head2 = snake2[0];
@@ -416,6 +426,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillText('Select a mode and press "Start Game" to begin.', canvas.width / 2, canvas.height / 2);
     }
     
-    updateAiChoice(currentAiIndex); // Set initial AI name
+    updateAiChoice(currentAiIndex);
     drawWelcomeScreen();
 });
