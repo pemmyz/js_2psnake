@@ -21,7 +21,7 @@ h1 {
 
 .game-container {
     display: flex;
-    align-items: center;
+    align-items: flex-start; /* Align to top */
     gap: 30px;
 }
 
@@ -36,7 +36,7 @@ canvas {
     background-color: #3a3f4b;
     padding: 20px;
     border-radius: 8px;
-    width: 150px;
+    width: 180px; /* Increased width */
     text-align: center;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
@@ -56,6 +56,22 @@ canvas {
 .controls p {
     margin: 5px 0;
     font-size: 0.9rem;
+}
+
+.bot-controls {
+    margin-top: 20px;
+    border-top: 1px solid #4a505c;
+    padding-top: 15px;
+}
+
+.bot-controls p {
+    font-size: 0.9rem;
+    margin: 8px 0 0 0;
+}
+
+.bot-controls span {
+    font-weight: bold;
+    color: #c678dd;
 }
 
 .game-controls {
@@ -92,6 +108,11 @@ button.active {
     color: #282c34;
 }
 
+.bot-controls button.active {
+    background-color: #e06c75;
+    color: #282c34;
+}
+
 #start-btn {
     background-color: #98c379;
     color: #282c34;
@@ -100,4 +121,14 @@ button.active {
 
 #start-btn:hover {
     background-color: #b3e092;
+}
+
+.instructions {
+    margin-top: 20px;
+    font-size: 1rem;
+    color: #56b6c2;
+}
+
+.instructions strong {
+    color: #e5c07b;
 }

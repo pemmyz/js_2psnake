@@ -3,21 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2-Player Snake</title>
+    <title>2-Player Snake with AI</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>2-Player Snake</h1>
+    <h1>2-Player Snake with AI</h1>
     <div class="game-container">
         <div class="ui-panel">
             <h2>Player 1</h2>
             <div class="score" id="score1">Score: 0</div>
             <div class="controls">
                 <p><strong>Controls:</strong></p>
-                <p>W - Up</p>
-                <p>S - Down</p>
-                <p>A - Left</p>
-                <p>D - Right</p>
+                <p>W, A, S, D</p>
+            </div>
+            <div class="bot-controls">
+                <button id="p1-bot-btn">Bot Mode</button>
+                <p>AI: <span id="p1-ai-name">Greedy</span></p>
             </div>
         </div>
 
@@ -28,10 +29,11 @@
             <div class="score" id="score2">Score: 0</div>
             <div class="controls">
                 <p><strong>Controls:</strong></p>
-                <p>↑ - Up</p>
-                <p>↓ - Down</p>
-                <p>← - Left</p>
-                <p>→ - Right</p>
+                <p>Arrow Keys</p>
+            </div>
+            <div class="bot-controls">
+                <button id="p2-bot-btn">Bot Mode</button>
+                <p>AI: <span id="p2-ai-name">Greedy</span></p>
             </div>
         </div>
     </div>
@@ -42,6 +44,9 @@
             <button id="modern-btn">Modern Mode</button>
         </div>
         <button id="start-btn">Start Game</button>
+    </div>
+    <div class="instructions">
+        <p>Press keys <strong>0-4</strong> to change the AI algorithm for the bots.</p>
     </div>
 
     <script src="script.js"></script>

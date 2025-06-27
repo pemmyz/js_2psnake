@@ -7,46 +7,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const classicBtn = document.getElementById('classic-btn');
     const modernBtn = document.getElementById('modern-btn');
     const startBtn = document.getElementById('start-btn');
+    const p1BotBtn = document.getElementById('p1-bot-btn');
+    const p2BotBtn = document.getElementById('p2-bot-btn');
+    const p1AiName = document.getElementById('p1-ai-name');
+    const p2AiName = document.getElementById('p2-ai-name');
 
     // --- Game Constants & State ---
-    const GRID_SIZE = 20; // For classic mode
-    const SNAKE_SIZE = 20; // For modern mode (can be different)
+    const GRID_SIZE = 20;
+    const CANVAS_WIDTH_UNITS = canvas.width / GRID_SIZE;
+    const CANVAS_HEIGHT_UNITS = canvas.height / GRID_SIZE;
+    const SNAKE_SIZE = 20;
     const FOOD_RADIUS = 8;
     
-    let gameMode = 'classic'; // 'classic' or 'modern'
+    let gameMode = 'classic';
     let gameRunning = false;
     let animationFrameId;
-    let gameFrame = 0; // For classic mode speed control
+    let gameFrame = 0;
 
-    // Player 1
     let snake1, score1, direction1, nextDirection1;
-    const P1_COLOR = '#61afef';
-
-    // Player 2
     let snake2, score2, direction2, nextDirection2;
-    const P2_COLOR = '#e5c07b';
-
-    // Food
     let food;
 
-    // --- Game Setup & Initialization ---
+    // --- AI State ---
+    let p1BotActive = false;
+    let p2BotActive = false;
+    let currentAiIndex = 1; // Default to Greedy
 
+    // --- Game Setup & Initialization ---
     function init() {
-        // Reset player 1
-        snake1 = [{ x: 8, y: 10 }]; // Start position in grid units
+        snake1 = [{ x: 8, y: 10 }];
         score1 = 0;
         direction1 = { x: 1, y: 0 };
         nextDirection1 = { x: 1, y: 0 };
         score1Element.textContent = `Score: 0`;
 
-        // Reset player 2
-        snake2 = [{ x: canvas.width / GRID_SIZE - 9, y: 10 }];
+        snake2 = [{ x: CANVAS_WIDTH_UNITS - 9, y: 10 }];
         score2 = 0;
         direction2 = { x: -1, y: 0 };
         nextDirection2 = { x: -1, y: 0 };
         score2Element.textContent = `Score: 0`;
 
-        // Reset game state
         gameFrame = 0;
         placeFood();
     }
@@ -55,9 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (gameRunning) return;
         gameRunning = true;
         init();
-        if (animationFrameId) {
-            cancelAnimationFrame(animationFrameId);
-        }
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
         gameLoop();
     }
 
@@ -66,10 +64,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let onSnake;
         do {
             onSnake = false;
-            foodX = Math.floor(Math.random() * (canvas.width / GRID_SIZE));
-            foodY = Math.floor(Math.random() * (canvas.height / GRID_SIZE));
-            
-            // Check if food spawns on any snake
+            foodX = Math.floor(Math.random() * CANVAS_WIDTH_UNITS);
+            foodY = Math.floor(Math.random() * CANVAS_HEIGHT_UNITS);
             for (const part of [...snake1, ...snake2]) {
                 if (part.x === foodX && part.y === foodY) {
                     onSnake = true;
@@ -77,58 +73,214 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         } while (onSnake);
-        
         food = { x: foodX, y: foodY };
     }
 
+    // --- AI ALGORITHMS ---
+    const aiAlgorithms = [
+        { name: 'Random', func: aiRandom },
+        { name: 'Greedy', func: aiGreedy },
+        { name: 'Smart Greedy', func: aiSmartGreedy },
+        { name: 'Defensive', func: aiDefensive },
+        { name: 'A* Pathfind', func: aiAStar },
+    ];
 
-    // --- Game Loop & Update Logic ---
+    function updateAiChoice(newIndex) {
+        currentAiIndex = newIndex;
+        const aiName = aiAlgorithms[currentAiIndex].name;
+        p1AiName.textContent = aiName;
+        p2AiName.textContent = aiName;
+    }
 
+    function getPossibleMoves(snake, otherSnake) {
+        const head = snake[0];
+        const possibleMoves = [
+            { x: 0, y: -1, name: 'up' }, { x: 0, y: 1, name: 'down' },
+            { x: -1, y: 0, name: 'left' }, { x: 1, y: 0, name: 'right' },
+        ];
+        
+        const obstacles = new Set([...snake.map(p => `${p.x},${p.y}`), ...otherSnake.map(p => `${p.x},${p.y}`)]);
+
+        return possibleMoves.filter(move => {
+            const nextPos = { x: head.x + move.x, y: head.y + move.y };
+            // Wall collision
+            if (nextPos.x < 0 || nextPos.x >= CANVAS_WIDTH_UNITS || nextPos.y < 0 || nextPos.y >= CANVAS_HEIGHT_UNITS) return false;
+            // Body collision
+            if (obstacles.has(`${nextPos.x},${nextPos.y}`)) return false;
+            return true;
+        });
+    }
+
+    // AI 0: Simple random turner to avoid imminent death
+    function aiRandom(snake, otherSnake, food, direction) {
+        let possibleMoves = getPossibleMoves(snake, otherSnake);
+        if (possibleMoves.length === 0) return direction; // Go straight to death
+
+        // Try to keep going straight
+        const straightMove = possibleMoves.find(m => m.x === direction.x && m.y === direction.y);
+        if (straightMove && Math.random() > 0.1) return straightMove; // 90% chance to go straight
+
+        return possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+    }
+
+    // AI 1: Always moves toward the food (greedy)
+    function aiGreedy(snake, otherSnake, food, direction) {
+        const head = snake[0];
+        let possibleMoves = getPossibleMoves(snake, otherSnake);
+        if (possibleMoves.length === 0) return direction;
+
+        possibleMoves.sort((a, b) => {
+            const distA = Math.hypot(head.x + a.x - food.x, head.y + a.y - food.y);
+            const distB = Math.hypot(head.x + b.x - food.x, head.y + b.y - food.y);
+            return distA - distB;
+        });
+
+        return possibleMoves[0];
+    }
+    
+    // AI 2: Greedy, but won't move into a spot with 0 future moves
+    function aiSmartGreedy(snake, otherSnake, food, direction) {
+        const head = snake[0];
+        let possibleMoves = getPossibleMoves(snake, otherSnake);
+        if (possibleMoves.length === 0) return direction;
+
+        // Filter out moves that lead to an immediate trap
+        const safeMoves = possibleMoves.filter(move => {
+            const nextPos = { x: head.x + move.x, y: head.y + move.y };
+            const futureSnake = [nextPos, ...snake];
+            return getPossibleMoves(futureSnake, otherSnake).length > 0;
+        });
+
+        const movesToConsider = safeMoves.length > 0 ? safeMoves : possibleMoves;
+        
+        movesToConsider.sort((a, b) => {
+            const distA = Math.hypot(head.x + a.x - food.x, head.y + a.y - food.y);
+            const distB = Math.hypot(head.x + b.x - food.x, head.y + b.y - food.y);
+            return distA - distB;
+        });
+        
+        return movesToConsider[0];
+    }
+
+    // AI 3: Tries to maximize its available space, goes for food only if it's safe
+    function aiDefensive(snake, otherSnake, food, direction) {
+        const head = snake[0];
+        let possibleMoves = getPossibleMoves(snake, otherSnake);
+        if (possibleMoves.length === 0) return direction;
+
+        // Choose the move that leads to the most future options
+        possibleMoves.sort((a, b) => {
+            const nextPosA = { x: head.x + a.x, y: head.y + a.y };
+            const futureSnakeA = [nextPosA, ...snake];
+            const futureMovesA = getPossibleMoves(futureSnakeA, otherSnake).length;
+
+            const nextPosB = { x: head.x + b.x, y: head.y + b.y };
+            const futureSnakeB = [nextPosB, ...snake];
+            const futureMovesB = getPossibleMoves(futureSnakeB, otherSnake).length;
+            
+            return futureMovesB - futureMovesA;
+        });
+
+        return possibleMoves[0];
+    }
+    
+    // AI 4: A* Pathfinding to find the shortest path to food
+    function aiAStar(snake, otherSnake, food, direction) {
+        const obstacles = new Set([...snake.slice(1).map(p => `${p.x},${p.y}`), ...otherSnake.map(p => `${p.x},${p.y}`)]);
+        const startNode = snake[0];
+        const endNode = food;
+
+        let openSet = [startNode];
+        let cameFrom = new Map();
+
+        let gScore = new Map();
+        gScore.set(`${startNode.x},${startNode.y}`, 0);
+
+        let fScore = new Map();
+        fScore.set(`${startNode.x},${startNode.y}`, Math.hypot(startNode.x - endNode.x, startNode.y - endNode.y));
+
+        while (openSet.length > 0) {
+            openSet.sort((a, b) => fScore.get(`${a.x},${a.y}`) - fScore.get(`${b.x},${b.y}`));
+            let current = openSet.shift();
+
+            if (current.x === endNode.x && current.y === endNode.y) {
+                // Reconstruct path
+                let path = [];
+                let temp = current;
+                while (cameFrom.has(`${temp.x},${temp.y}`)) {
+                    path.unshift(temp);
+                    temp = cameFrom.get(`${temp.x},${temp.y}`);
+                }
+                if (path.length > 0) {
+                    return { x: path[0].x - startNode.x, y: path[0].y - startNode.y };
+                }
+            }
+
+            const neighbors = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].map(d => ({x: current.x+d.x, y: current.y+d.y}));
+            
+            for (const neighbor of neighbors) {
+                if (neighbor.x < 0 || neighbor.x >= CANVAS_WIDTH_UNITS || neighbor.y < 0 || neighbor.y >= CANVAS_HEIGHT_UNITS) continue;
+                if (obstacles.has(`${neighbor.x},${neighbor.y}`)) continue;
+
+                let tentativeGScore = gScore.get(`${current.x},${current.y}`) + 1;
+                if (tentativeGScore < (gScore.get(`${neighbor.x},${neighbor.y}`) || Infinity)) {
+                    cameFrom.set(`${neighbor.x},${neighbor.y}`, current);
+                    gScore.set(`${neighbor.x},${neighbor.y}`, tentativeGScore);
+                    fScore.set(`${neighbor.x},${neighbor.y}`, tentativeGScore + Math.hypot(neighbor.x - endNode.x, neighbor.y - endNode.y));
+                    if (!openSet.find(n => n.x === neighbor.x && n.y === neighbor.y)) {
+                        openSet.push(neighbor);
+                    }
+                }
+            }
+        }
+        
+        // If A* fails (no path), fall back to a safer algorithm
+        return aiSmartGreedy(snake, otherSnake, food, direction);
+    }
+    
+    // --- Game Loop ---
     function gameLoop() {
         if (!gameRunning) return;
-        
         update();
         draw();
-
         animationFrameId = requestAnimationFrame(gameLoop);
     }
     
     function update() {
-        if (gameMode === 'classic') {
-            // Slow down the classic mode update rate
-            if (gameFrame++ % 5 !== 0) return;
-        }
+        const speed = gameMode === 'classic' ? 5 : 1;
+        if (gameFrame++ % speed !== 0) return;
+        
+        // Update bot moves if active
+        if (p1BotActive) nextDirection1 = aiAlgorithms[currentAiIndex].func(snake1, snake2, food, direction1);
+        if (p2BotActive) nextDirection2 = aiAlgorithms[currentAiIndex].func(snake2, snake1, food, direction2);
 
-        moveSnake(snake1, direction1, nextDirection1);
-        moveSnake(snake2, direction2, nextDirection2);
+        moveSnake(snake1, direction1, nextDirection1, 1);
+        moveSnake(snake2, direction2, nextDirection2, 2);
         
         checkCollisions();
     }
 
-    function moveSnake(snake, direction, nextDirection) {
-        // Update direction without allowing 180-degree turns
-        if (Math.abs(nextDirection.x) !== Math.abs(direction.x) || Math.abs(nextDirection.y) !== Math.abs(direction.y)) {
-             Object.assign(direction, nextDirection);
+    function moveSnake(snake, direction, nextDirection, playerNum) {
+        if ((nextDirection.x !== 0 && direction.x !== -nextDirection.x) || (nextDirection.y !== 0 && direction.y !== -nextDirection.y)) {
+            Object.assign(direction, nextDirection);
         }
 
-        const head = { ...snake[0] }; // Copy head
+        const head = { ...snake[0] };
         head.x += direction.x;
         head.y += direction.y;
-        
-        snake.unshift(head); // Add new head
+        snake.unshift(head);
 
-        // Check for food consumption
         let ateFood = false;
         if (gameMode === 'classic') {
              if (head.x === food.x && head.y === food.y) ateFood = true;
-        } else { // Modern mode needs proximity check
+        } else {
             const dx = (head.x * SNAKE_SIZE + SNAKE_SIZE / 2) - (food.x * GRID_SIZE + GRID_SIZE / 2);
             const dy = (head.y * SNAKE_SIZE + SNAKE_SIZE / 2) - (food.y * GRID_SIZE + GRID_SIZE / 2);
             if (Math.sqrt(dx*dx + dy*dy) < SNAKE_SIZE / 2 + FOOD_RADIUS) ateFood = true;
         }
 
         if (ateFood) {
-            if (snake === snake1) {
+            if (playerNum === 1) {
                 score1++;
                 score1Element.textContent = `Score: ${score1}`;
             } else {
@@ -137,46 +289,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             placeFood();
         } else {
-            snake.pop(); // Remove tail if no food was eaten
+            snake.pop();
         }
     }
 
-
-    // --- Collision Detection ---
-
+    // --- Collision & Drawing (Mostly Unchanged) ---
     function checkCollisions() {
         const head1 = snake1[0];
         const head2 = snake2[0];
         
-        // Wall collision
-        const wallCollision1 = head1.x < 0 || head1.x >= canvas.width / GRID_SIZE || head1.y < 0 || head1.y >= canvas.height / GRID_SIZE;
-        const wallCollision2 = head2.x < 0 || head2.x >= canvas.width / GRID_SIZE || head2.y < 0 || head2.y >= canvas.height / GRID_SIZE;
-        
-        if (wallCollision1) return gameOver('Player 2 Wins! Player 1 hit a wall.');
-        if (wallCollision2) return gameOver('Player 1 Wins! Player 2 hit a wall.');
-        
-        // Self collision
+        if (head1.x < 0 || head1.x >= CANVAS_WIDTH_UNITS || head1.y < 0 || head1.y >= CANVAS_HEIGHT_UNITS) return gameOver('Player 2 Wins! Player 1 hit a wall.');
+        if (head2.x < 0 || head2.x >= CANVAS_WIDTH_UNITS || head2.y < 0 || head2.y >= CANVAS_HEIGHT_UNITS) return gameOver('Player 1 Wins! Player 2 hit a wall.');
         if (checkSelfCollision(snake1)) return gameOver('Player 2 Wins! Player 1 crashed into itself.');
         if (checkSelfCollision(snake2)) return gameOver('Player 1 Wins! Player 2 crashed into itself.');
-        
-        // Snake-on-snake collision
         if (checkSnakeCollision(head1, snake2)) return gameOver('Player 2 Wins! Player 1 crashed into Player 2.');
         if (checkSnakeCollision(head2, snake1)) return gameOver('Player 1 Wins! Player 2 crashed into Player 1.');
         if (head1.x === head2.x && head1.y === head2.y) return gameOver("It's a tie! Head-on collision.");
     }
 
     function checkSelfCollision(snake) {
-        const head = snake[0];
-        for (let i = 1; i < snake.length; i++) {
-            if (head.x === snake[i].x && head.y === snake[i].y) return true;
-        }
+        for (let i = 1; i < snake.length; i++) if (snake[0].x === snake[i].x && snake[0].y === snake[i].y) return true;
         return false;
     }
 
     function checkSnakeCollision(head, otherSnake) {
-        for (const part of otherSnake) {
-            if (head.x === part.x && head.y === part.y) return true;
-        }
+        for (const part of otherSnake) if (head.x === part.x && head.y === part.y) return true;
         return false;
     }
 
@@ -184,48 +321,35 @@ document.addEventListener('DOMContentLoaded', () => {
         gameRunning = false;
         ctx.fillStyle = 'rgba(40, 44, 52, 0.75)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
         ctx.fillStyle = '#abb2bf';
         ctx.font = '40px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 40);
-
         ctx.font = '24px sans-serif';
         ctx.fillText(message, canvas.width / 2, canvas.height / 2 + 10);
-        
         ctx.font = '18px sans-serif';
         ctx.fillText('Click "Start Game" to play again.', canvas.width / 2, canvas.height / 2 + 60);
     }
 
-
-    // --- Drawing ---
-
     function draw() {
-        // Clear canvas
         ctx.fillStyle = '#1c1f24';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Draw food
-        ctx.fillStyle = '#c678dd'; // Food color
+        ctx.fillStyle = '#c678dd';
         ctx.beginPath();
         ctx.arc(food.x * GRID_SIZE + GRID_SIZE / 2, food.y * GRID_SIZE + GRID_SIZE / 2, FOOD_RADIUS, 0, Math.PI * 2);
         ctx.fill();
-
-        // Draw snakes
-        drawSnake(snake1, P1_COLOR);
-        drawSnake(snake2, P2_COLOR);
+        drawSnake(snake1, '#61afef');
+        drawSnake(snake2, '#e5c07b');
     }
 
     function drawSnake(snake, color) {
         ctx.fillStyle = color;
         if (gameMode === 'classic') {
-            for (const part of snake) {
-                ctx.fillRect(part.x * GRID_SIZE, part.y * GRID_SIZE, GRID_SIZE - 2, GRID_SIZE - 2);
-            }
-        } else { // Modern mode smooth drawing
+            for (const part of snake) ctx.fillRect(part.x * GRID_SIZE, part.y * GRID_SIZE, GRID_SIZE - 2, GRID_SIZE - 2);
+        } else {
             for (let i = 0; i < snake.length; i++) {
                 const part = snake[i];
-                const size = SNAKE_SIZE * (1 - i * 0.02); // Taper the tail
+                const size = SNAKE_SIZE * (1 - i * 0.02);
                 ctx.beginPath();
                 ctx.arc(part.x * SNAKE_SIZE + SNAKE_SIZE/2, part.y * SNAKE_SIZE + SNAKE_SIZE/2, Math.max(size/2, 2), 0, Math.PI * 2);
                 ctx.fill();
@@ -233,47 +357,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-
     // --- Event Listeners ---
-
-    // Player Controls
     document.addEventListener('keydown', e => {
+        if (e.key >= '0' && e.key <= '4') {
+            const index = parseInt(e.key);
+            if (index < aiAlgorithms.length) {
+                updateAiChoice(index);
+            }
+            return;
+        }
+
         switch (e.key) {
-            // Player 1 (WASD)
-            case 'w':
-            case 'W':
-                if (direction1.y === 0) nextDirection1 = { x: 0, y: -1 };
-                break;
-            case 's':
-            case 'S':
-                if (direction1.y === 0) nextDirection1 = { x: 0, y: 1 };
-                break;
-            case 'a':
-            case 'A':
-                if (direction1.x === 0) nextDirection1 = { x: -1, y: 0 };
-                break;
-            case 'd':
-            case 'D':
-                if (direction1.x === 0) nextDirection1 = { x: 1, y: 0 };
-                break;
-            
-            // Player 2 (Arrow Keys)
-            case 'ArrowUp':
-                if (direction2.y === 0) nextDirection2 = { x: 0, y: -1 };
-                break;
-            case 'ArrowDown':
-                if (direction2.y === 0) nextDirection2 = { x: 0, y: 1 };
-                break;
-            case 'ArrowLeft':
-                if (direction2.x === 0) nextDirection2 = { x: -1, y: 0 };
-                break;
-            case 'ArrowRight':
-                if (direction2.x === 0) nextDirection2 = { x: 1, y: 0 };
-                break;
+            case 'w': case 'W': if (direction1.y === 0 && !p1BotActive) nextDirection1 = { x: 0, y: -1 }; break;
+            case 's': case 'S': if (direction1.y === 0 && !p1BotActive) nextDirection1 = { x: 0, y: 1 }; break;
+            case 'a': case 'A': if (direction1.x === 0 && !p1BotActive) nextDirection1 = { x: -1, y: 0 }; break;
+            case 'd': case 'D': if (direction1.x === 0 && !p1BotActive) nextDirection1 = { x: 1, y: 0 }; break;
+            case 'ArrowUp': if (direction2.y === 0 && !p2BotActive) nextDirection2 = { x: 0, y: -1 }; break;
+            case 'ArrowDown': if (direction2.y === 0 && !p2BotActive) nextDirection2 = { x: 0, y: 1 }; break;
+            case 'ArrowLeft': if (direction2.x === 0 && !p2BotActive) nextDirection2 = { x: -1, y: 0 }; break;
+            case 'ArrowRight': if (direction2.x === 0 && !p2BotActive) nextDirection2 = { x: 1, y: 0 }; break;
         }
     });
 
-    // UI Controls
+    p1BotBtn.addEventListener('click', () => {
+        p1BotActive = !p1BotActive;
+        p1BotBtn.classList.toggle('active', p1BotActive);
+    });
+
+    p2BotBtn.addEventListener('click', () => {
+        p2BotActive = !p2BotActive;
+        p2BotBtn.classList.toggle('active', p2BotActive);
+    });
+
     classicBtn.addEventListener('click', () => {
         gameMode = 'classic';
         classicBtn.classList.add('active');
@@ -288,23 +403,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     startBtn.addEventListener('click', startGame);
 
-    // --- Initial Welcome Screen ---
+    // --- Initial Screen ---
     function drawWelcomeScreen() {
         ctx.fillStyle = '#1c1f24';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-
         ctx.fillStyle = '#61afef';
         ctx.font = '48px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('2-Player Snake', canvas.width / 2, canvas.height / 2 - 80);
-
         ctx.fillStyle = '#abb2bf';
         ctx.font = '20px sans-serif';
         ctx.fillText('Select a mode and press "Start Game" to begin.', canvas.width / 2, canvas.height / 2);
-
-        ctx.font = '16px sans-serif';
-        ctx.fillText('P1: WASD  |  P2: Arrow Keys', canvas.width / 2, canvas.height / 2 + 50);
     }
     
+    updateAiChoice(currentAiIndex); // Set initial AI name
     drawWelcomeScreen();
 });
