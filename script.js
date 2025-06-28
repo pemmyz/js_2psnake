@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let gameRunning = false;
     let animationFrameId;
     let gameFrame = 0;
+    let idleTimer; // For auto-starting game with bots
 
     let snake1, score1, direction1, nextDirection1;
     let snake2, score2, direction2, nextDirection2;
@@ -53,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function startGame() {
         if (gameRunning) return;
+        clearTimeout(idleTimer); // Clear the auto-start timer when game starts
         gameRunning = true;
         init();
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -215,17 +217,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const neighborKey = `${neighbor.x},${neighbor.y}`;
                 if (neighbor.x < 0 || neighbor.x >= CANVAS_WIDTH_UNITS || neighbor.y < 0 || neighbor.y >= CANVAS_HEIGHT_UNITS || obstacles.has(neighborKey)) continue;
 
-                let freeNeighbors = 0;
-                const neighborNeighbors = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].map(d => ({x: neighbor.x+d.x, y: neighbor.y+d.y}));
-                for (const nn of neighborNeighbors) {
-                    const nnKey = `${nn.x},${nn.y}`;
-                    if (nn.x >= 0 && nn.x < CANVAS_WIDTH_UNITS && nn.y >= 0 && nn.y < CANVAS_HEIGHT_UNITS && !obstacles.has(nnKey)) {
-                        freeNeighbors++;
-                    }
-                }
-                const penalty = Math.max(0, 3 - freeNeighbors) * 5;
-                
-                let tentativeGScore = (gScore.get(`${current.x},${current.y}`) || Infinity) + 1 + penalty;
+                // ** A* FIX: Removed penalty for being near walls, which caused pathing failures. **
+                let tentativeGScore = (gScore.get(`${current.x},${current.y}`) || Infinity) + 1;
 
                 if (tentativeGScore < (gScore.get(neighborKey) || Infinity)) {
                     cameFrom.set(neighborKey, current);
@@ -347,7 +340,10 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.font = '24px sans-serif';
         ctx.fillText(message, canvas.width / 2, canvas.height / 2 + 10);
         ctx.font = '18px sans-serif';
-        ctx.fillText('Click "Start Game" to play again.', canvas.width / 2, canvas.height / 2 + 60);
+        ctx.fillText('Restarting in 3 seconds...', canvas.width / 2, canvas.height / 2 + 60);
+
+        // Auto-restart the game after 3 seconds
+        setTimeout(startGame, 3000);
     }
 
     function draw() {
@@ -437,8 +433,21 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillStyle = '#abb2bf';
         ctx.font = '20px sans-serif';
         ctx.fillText('Select a mode and press "Start Game" to begin.', canvas.width / 2, canvas.height / 2);
+        ctx.font = '16px sans-serif';
+        ctx.fillText('Or, wait 7 seconds for a bot match to start.', canvas.width / 2, canvas.height / 2 + 40);
     }
     
     updateAiChoice(currentAiIndex);
     drawWelcomeScreen();
+
+    // Start game with bots if idle for 7 seconds
+    idleTimer = setTimeout(() => {
+        if (!gameRunning) { // Check if game hasn't been started manually
+            p1BotActive = true;
+            p2BotActive = true;
+            p1BotBtn.classList.add('active');
+            p2BotBtn.classList.add('active');
+            startGame();
+        }
+    }, 7000);
 });
