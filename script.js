@@ -23,7 +23,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let gameRunning = false;
     let animationFrameId;
     let gameFrame = 0;
-    let idleTimer; // For auto-starting game with bots
+    
+    // --- Countdown Timer State ---
+    let countdownInterval;
+    let countdownValue = 7;
 
     let snake1, score1, direction1, nextDirection1;
     let snake2, score2, direction2, nextDirection2;
@@ -32,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- AI State ---
     let p1BotActive = false;
     let p2BotActive = false;
-    let currentAiIndex = 4; // Default to A*
+    let currentAiIndex = 1; // Default to Greedy (was 4 for A*)
 
     // --- Game Setup & Initialization ---
     function init() {
@@ -53,8 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function startGame() {
+        clearInterval(countdownInterval); // Stop the auto-start countdown
         if (gameRunning) return;
-        clearTimeout(idleTimer); // Clear the auto-start timer when game starts
         gameRunning = true;
         init();
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -142,14 +145,12 @@ document.addEventListener('DOMContentLoaded', () => {
        return aiGreedy(snake, otherSnake, food, direction);
     }
 
-    // **** UPDATED Defensive AI with Tie-breaker ****
     function aiDefensive(snake, otherSnake, food, direction) {
         const head = snake[0];
         let possibleMoves = getPossibleMoves(snake, otherSnake);
         if (possibleMoves.length === 0) return direction;
 
         possibleMoves.sort((a, b) => {
-            // --- Primary Goal: Maximize future moves (be defensive) ---
             const nextPosA = { x: head.x + a.x, y: head.y + a.y };
             const futureSnakeA = [nextPosA, ...snake];
             const futureMovesA = getPossibleMoves(futureSnakeA, otherSnake).length;
@@ -159,14 +160,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const futureMovesB = getPossibleMoves(futureSnakeB, otherSnake).length;
 
             if (futureMovesA !== futureMovesB) {
-                return futureMovesB - futureMovesA; // Return move with more space
+                return futureMovesB - futureMovesA;
             }
 
-            // --- Tie-breaker: If space is equal, move towards the food ---
             const distA = Math.hypot(nextPosA.x - food.x, nextPosA.y - food.y);
             const distB = Math.hypot(nextPosB.x - food.x, nextPosB.y - food.y);
             
-            return distA - distB; // Return move that's closer to the food
+            return distA - distB;
         });
 
         return possibleMoves[0];
@@ -175,7 +175,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Advanced AI Logic ---
     function findPathWithAStar(snake, otherSnake, targetNode) {
         const startNode = snake[0];
-        const obstacles = new Set([...snake.slice(1).map(p => `${p.x},${p.y}`), ...otherSnake.map(p => `${p.x},${p.y}`)]);
+        const obstacles = new Set([...snake.slice(1).map(p => `${p.x},${p.y}`), ...otherSnake.slice(1).map(p => `${p.x},${p.y}`)]);
 
         let openSet = [startNode];
         let cameFrom = new Map();
@@ -217,7 +217,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const neighborKey = `${neighbor.x},${neighbor.y}`;
                 if (neighbor.x < 0 || neighbor.x >= CANVAS_WIDTH_UNITS || neighbor.y < 0 || neighbor.y >= CANVAS_HEIGHT_UNITS || obstacles.has(neighborKey)) continue;
 
-                // ** A* FIX: Removed penalty for being near walls, which caused pathing failures. **
                 let tentativeGScore = (gScore.get(`${current.x},${current.y}`) || Infinity) + 1;
 
                 if (tentativeGScore < (gScore.get(neighborKey) || Infinity)) {
@@ -234,18 +233,46 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function aiAStar(snake, otherSnake, food, direction) {
+        // 1. Primary Objective: Find a path to the food.
         const pathToFood = findPathWithAStar(snake, otherSnake, food);
         if (pathToFood) {
             return pathToFood;
         }
 
+        // 2. Secondary Objective: If food is unreachable, follow your own tail to survive.
         const tail = snake[snake.length - 1];
         const pathToTail = findPathWithAStar(snake, otherSnake, tail);
         if (pathToTail) {
             return pathToTail;
         }
 
-        return aiDefensive(snake, otherSnake, food, direction);
+        // 3. Last Resort: If all pathfinding fails, find the best possible adjacent square.
+        const possibleMoves = getPossibleMoves(snake, otherSnake);
+        
+        if (possibleMoves.length === 0) {
+            return direction; 
+        }
+        
+        possibleMoves.sort((a, b) => {
+            const head = snake[0];
+            const nextPosA = { x: head.x + a.x, y: head.y + a.y };
+            const futureSnakeA = [nextPosA, ...snake];
+            const futureMovesA = getPossibleMoves(futureSnakeA, otherSnake).length;
+
+            const nextPosB = { x: head.x + b.x, y: head.y + b.y };
+            const futureSnakeB = [nextPosB, ...snake];
+            const futureMovesB = getPossibleMoves(futureSnakeB, otherSnake).length;
+
+            if (futureMovesA !== futureMovesB) {
+                return futureMovesB - futureMovesA;
+            }
+            
+            const distA = Math.hypot(nextPosA.x - food.x, nextPosA.y - food.y);
+            const distB = Math.hypot(nextPosB.x - food.x, nextPosB.y - food.y);
+            return distA - distB;
+        });
+
+        return possibleMoves[0];
     }
     
     // --- Game Loop ---
@@ -342,7 +369,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.font = '18px sans-serif';
         ctx.fillText('Restarting in 3 seconds...', canvas.width / 2, canvas.height / 2 + 60);
 
-        // Auto-restart the game after 3 seconds
         setTimeout(startGame, 3000);
     }
 
@@ -422,32 +448,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
     startBtn.addEventListener('click', startGame);
 
-    // --- Initial Screen ---
-    function drawWelcomeScreen() {
-        ctx.fillStyle = '#1c1f24';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = '#61afef';
-        ctx.font = '48px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('2-Player Snake', canvas.width / 2, canvas.height / 2 - 80);
-        ctx.fillStyle = '#abb2bf';
-        ctx.font = '20px sans-serif';
-        ctx.fillText('Select a mode and press "Start Game" to begin.', canvas.width / 2, canvas.height / 2);
-        ctx.font = '16px sans-serif';
-        ctx.fillText('Or, wait 7 seconds for a bot match to start.', canvas.width / 2, canvas.height / 2 + 40);
+    // --- Initial Screen and Countdown Logic ---
+    function startWelcomeCountdown() {
+        clearInterval(countdownInterval); // Ensure no multiple intervals
+
+        countdownInterval = setInterval(() => {
+            if (gameRunning) {
+                clearInterval(countdownInterval);
+                return;
+            }
+
+            // Drawing logic
+            ctx.fillStyle = '#1c1f24';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#61afef';
+            ctx.font = '48px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('2-Player Snake', canvas.width / 2, canvas.height / 2 - 80);
+            ctx.fillStyle = '#abb2bf';
+            ctx.font = '20px sans-serif';
+            ctx.fillText('Select a mode and press "Start Game" to begin.', canvas.width / 2, canvas.height / 2);
+
+            // Display countdown or starting message
+            if (countdownValue >= 1) {
+                ctx.font = '18px sans-serif';
+                ctx.fillStyle = '#e5c07b';
+                ctx.fillText(`Auto-starting bot match in ${countdownValue}...`, canvas.width / 2, canvas.height / 2 + 50);
+            } else {
+                ctx.font = '18px sans-serif';
+                ctx.fillStyle = '#98c379';
+                ctx.fillText('Starting bot match!', canvas.width / 2, canvas.height / 2 + 50);
+            }
+
+            countdownValue--;
+
+            // Auto-start game when countdown finishes
+            if (countdownValue < -1) { // Delay for 1s after showing "Starting"
+                clearInterval(countdownInterval);
+                if (!gameRunning) {
+                    p1BotActive = true;
+                    p2BotActive = true;
+                    p1BotBtn.classList.add('active');
+                    p2BotBtn.classList.add('active');
+                    startGame();
+                }
+            }
+        }, 1000);
     }
     
     updateAiChoice(currentAiIndex);
-    drawWelcomeScreen();
-
-    // Start game with bots if idle for 7 seconds
-    idleTimer = setTimeout(() => {
-        if (!gameRunning) { // Check if game hasn't been started manually
-            p1BotActive = true;
-            p2BotActive = true;
-            p1BotBtn.classList.add('active');
-            p2BotBtn.classList.add('active');
-            startGame();
-        }
-    }, 7000);
+    startWelcomeCountdown();
 });
