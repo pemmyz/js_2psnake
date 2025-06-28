@@ -31,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- AI State ---
     let p1BotActive = false;
     let p2BotActive = false;
-    let currentAiIndex = 2; // Default to Smart Greedy
+    let currentAiIndex = 4; // Default to A*
 
     // --- Game Setup & Initialization ---
     function init() {
@@ -109,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- Simple AIs ---
     function aiRandom(snake, otherSnake, food, direction) {
         let possibleMoves = getPossibleMoves(snake, otherSnake);
         if (possibleMoves.length === 0) return direction; 
@@ -117,74 +118,59 @@ document.addEventListener('DOMContentLoaded', () => {
         return possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
     }
 
-    // **** UPDATED: The simple Greedy AI now uses the safer "Smart Greedy" logic ****
-    // This prevents it from trapping itself, which was the cause of the bug.
     function aiGreedy(snake, otherSnake, food, direction) {
         const head = snake[0];
         let possibleMoves = getPossibleMoves(snake, otherSnake);
         if (possibleMoves.length === 0) return direction;
-
-        // Filter for moves that don't lead to an immediate dead end.
         const safeMoves = possibleMoves.filter(move => {
             const nextPos = { x: head.x + move.x, y: head.y + move.y };
             const futureSnake = [nextPos, ...snake];
             return getPossibleMoves(futureSnake, otherSnake).length > 0;
         });
-
-        // If there are safe moves, use them. Otherwise, use any move as a last resort.
         const movesToConsider = safeMoves.length > 0 ? safeMoves : possibleMoves;
-        
-        // From the list of safer moves, pick the one closest to the food.
         movesToConsider.sort((a, b) => {
             const distA = Math.hypot(head.x + a.x - food.x, head.y + a.y - food.y);
             const distB = Math.hypot(head.x + b.x - food.x, head.y + b.y - food.y);
             return distA - distB;
         });
-        
         return movesToConsider[0];
     }
     
-    // The Smart Greedy algorithm (now identical to the fixed Greedy one)
     function aiSmartGreedy(snake, otherSnake, food, direction) {
-        const head = snake[0];
-        let possibleMoves = getPossibleMoves(snake, otherSnake);
-        if (possibleMoves.length === 0) return direction;
-
-        const safeMoves = possibleMoves.filter(move => {
-            const nextPos = { x: head.x + move.x, y: head.y + move.y };
-            const futureSnake = [nextPos, ...snake];
-            return getPossibleMoves(futureSnake, otherSnake).length > 0;
-        });
-
-        const movesToConsider = safeMoves.length > 0 ? safeMoves : possibleMoves;
-        
-        movesToConsider.sort((a, b) => {
-            const distA = Math.hypot(head.x + a.x - food.x, head.y + a.y - food.y);
-            const distB = Math.hypot(head.x + b.x - food.x, head.y + b.y - food.y);
-            return distA - distB;
-        });
-        
-        return movesToConsider[0];
+       return aiGreedy(snake, otherSnake, food, direction);
     }
 
+    // **** UPDATED Defensive AI with Tie-breaker ****
     function aiDefensive(snake, otherSnake, food, direction) {
         const head = snake[0];
         let possibleMoves = getPossibleMoves(snake, otherSnake);
         if (possibleMoves.length === 0) return direction;
 
         possibleMoves.sort((a, b) => {
+            // --- Primary Goal: Maximize future moves (be defensive) ---
             const nextPosA = { x: head.x + a.x, y: head.y + a.y };
             const futureSnakeA = [nextPosA, ...snake];
             const futureMovesA = getPossibleMoves(futureSnakeA, otherSnake).length;
+
             const nextPosB = { x: head.x + b.x, y: head.y + b.y };
             const futureSnakeB = [nextPosB, ...snake];
             const futureMovesB = getPossibleMoves(futureSnakeB, otherSnake).length;
-            return futureMovesB - futureMovesA;
+
+            if (futureMovesA !== futureMovesB) {
+                return futureMovesB - futureMovesA; // Return move with more space
+            }
+
+            // --- Tie-breaker: If space is equal, move towards the food ---
+            const distA = Math.hypot(nextPosA.x - food.x, nextPosA.y - food.y);
+            const distB = Math.hypot(nextPosB.x - food.x, nextPosB.y - food.y);
+            
+            return distA - distB; // Return move that's closer to the food
         });
 
         return possibleMoves[0];
     }
     
+    // --- Advanced AI Logic ---
     function findPathWithAStar(snake, otherSnake, targetNode) {
         const startNode = snake[0];
         const obstacles = new Set([...snake.slice(1).map(p => `${p.x},${p.y}`), ...otherSnake.map(p => `${p.x},${p.y}`)]);
@@ -229,7 +215,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 const neighborKey = `${neighbor.x},${neighbor.y}`;
                 if (neighbor.x < 0 || neighbor.x >= CANVAS_WIDTH_UNITS || neighbor.y < 0 || neighbor.y >= CANVAS_HEIGHT_UNITS || obstacles.has(neighborKey)) continue;
 
-                let tentativeGScore = gScore.get(`${current.x},${current.y}`) + 1;
+                let freeNeighbors = 0;
+                const neighborNeighbors = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].map(d => ({x: neighbor.x+d.x, y: neighbor.y+d.y}));
+                for (const nn of neighborNeighbors) {
+                    const nnKey = `${nn.x},${nn.y}`;
+                    if (nn.x >= 0 && nn.x < CANVAS_WIDTH_UNITS && nn.y >= 0 && nn.y < CANVAS_HEIGHT_UNITS && !obstacles.has(nnKey)) {
+                        freeNeighbors++;
+                    }
+                }
+                const penalty = Math.max(0, 3 - freeNeighbors) * 5;
+                
+                let tentativeGScore = (gScore.get(`${current.x},${current.y}`) || Infinity) + 1 + penalty;
+
                 if (tentativeGScore < (gScore.get(neighborKey) || Infinity)) {
                     cameFrom.set(neighborKey, current);
                     gScore.set(neighborKey, tentativeGScore);
