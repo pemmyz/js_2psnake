@@ -31,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- AI State ---
     let p1BotActive = false;
     let p2BotActive = false;
-    let currentAiIndex = 1; // Default to Greedy
+    let currentAiIndex = 4; // Default to A* to showcase the fix
 
     // --- Game Setup & Initialization ---
     function init() {
@@ -191,7 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fScore.set(startKey, Math.hypot(startNode.x - endNode.x, startNode.y - endNode.y));
         
         let iterations = 0;
-        const maxIterations = 2000; // Increased safeguard for complex paths
+        const maxIterations = 2000; // Safeguard against infinitely complex paths
 
         while (openSet.length > 0) {
             if (iterations++ > maxIterations) {
@@ -262,7 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // If A* fails (no path found or too complex), fall back to the Defensive AI.
         // The Defensive AI prioritizes survival and maximizing space, which is the best
         // thing to do when the path to the food is blocked or unclear.
-        // This prevents the bot from getting stuck or making a bad move when the apple moves.
+        // This prevents the bot from getting stuck or making a bad move when the apple is eaten by the opponent.
         return aiDefensive(snake, otherSnake, food, direction);
     }
     
@@ -275,7 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function update() {
-        const speed = gameMode === 'classic' ? 5 : 1;
+        const speed = gameMode === 'classic' ? 5 : 2;
         if (gameFrame++ % speed !== 0) return;
         
         if (p1BotActive) nextDirection1 = aiAlgorithms[currentAiIndex].func(snake1, snake2, food, direction1);
