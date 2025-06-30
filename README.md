@@ -6,8 +6,12 @@
 
 A modern twist on the classic Snake game — now with **2-player support**, multiple **AI algorithms**, and switchable **Classic vs Modern modes**! Play solo or with a friend, or let the bots battle it out!
 
-🎮 [Play it now on GitHub Pages](https://pemmyz.github.io/js_2psnake/)  
-📁 [View the code on GitHub](https://github.com/pemmyz/js_2psnake/)
+---
+
+## 📸 Screenshots
+
+### Game
+![Game 1](screenshots/game_1.png)  
 
 ---
 
