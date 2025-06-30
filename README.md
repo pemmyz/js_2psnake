@@ -1,5 +1,6 @@
 # js_2psnake
 
+## Play it now: https://pemmyz.github.io/js_2psnake/
 
 # 🐍 2-Player Snake with AI
 
