@@ -50,6 +50,13 @@ canvas {
     font-size: 1.2rem;
     font-weight: bold;
     color: #98c379;
+    margin-bottom: 5px; /* Adjusted for tighter spacing with faults */
+}
+
+.faults {
+    font-size: 1rem;
+    font-weight: bold;
+    color: #e06c75; /* Reddish color for faults */
     margin-bottom: 15px;
 }
 

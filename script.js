@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const ctx = canvas.getContext('2d');
     const score1Element = document.getElementById('score1');
     const score2Element = document.getElementById('score2');
+    const faults1Element = document.getElementById('faults1');
+    const faults2Element = document.getElementById('faults2');
     const classicBtn = document.getElementById('classic-btn');
     const modernBtn = document.getElementById('modern-btn');
     const startBtn = document.getElementById('start-btn');
@@ -18,8 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const CANVAS_HEIGHT_UNITS = canvas.height / GRID_SIZE;
     const SNAKE_SIZE = 20;
     const FOOD_RADIUS = 8;
-    const SPAWN_RADIUS = 5; // *** NEW: Radius for targeted food spawning ***
-    
+    const SPAWN_RADIUS = 5;
+    // --- NEW: Food Timeout Constant ---
+    const FOOD_TIMEOUT_FRAMES = 6 * 60; // 6 seconds at 60fps
+
     let gameMode = 'classic';
     let gameRunning = false;
     let animationFrameId;
@@ -32,35 +36,63 @@ document.addEventListener('DOMContentLoaded', () => {
     let snake1, score1, direction1, nextDirection1;
     let snake2, score2, direction2, nextDirection2;
     let food;
-    let foodTargetPlayer = null; // Tracks which player is "supposed" to get the next food.
+    let foodTargetPlayer = null; 
+
+    // --- NEW: Food Spawn Timer ---
+    let foodSpawnFrame = 0;
+    
+    // --- Fault Tracking State ---
+    let faults1 = 0;
+    let faults2 = 0;
 
     // --- AI State ---
     let p1BotActive = false;
     let p2BotActive = false;
-    let currentAiIndex = 2; // Default to Smart Greedy for the new cooperative behavior
+    let currentAiIndex = 2; 
 
     // --- Game Setup & Initialization ---
     function init() {
-        snake1 = [{ x: 8, y: 10 }];
+        const startX1 = 8;
+        const startY1 = 10;
+        snake1 = [
+            { x: startX1, y: startY1 },      
+            { x: startX1 - 1, y: startY1 },  
+            { x: startX1 - 2, y: startY1 }   
+        ];
         score1 = 0;
         direction1 = { x: 1, y: 0 };
         nextDirection1 = { x: 1, y: 0 };
         score1Element.textContent = `Score: 0`;
 
-        snake2 = [{ x: CANVAS_WIDTH_UNITS - 9, y: 10 }];
+        const startX2 = CANVAS_WIDTH_UNITS - 9;
+        const startY2 = 10;
+        snake2 = [
+            { x: startX2, y: startY2 },      
+            { x: startX2 + 1, y: startY2 },  
+            { x: startX2 + 2, y: startY2 }   
+        ];
         score2 = 0;
         direction2 = { x: -1, y: 0 };
         nextDirection2 = { x: -1, y: 0 };
         score2Element.textContent = `Score: 0`;
 
-        foodTargetPlayer = null; // Reset food target on new game
+        foodTargetPlayer = null; 
         gameFrame = 0;
         placeFood();
     }
     
-    function startGame() {
-        clearInterval(countdownInterval); // Stop the auto-start countdown
+    function startGame(isManualStart = false) {
+        clearInterval(countdownInterval); 
         if (gameRunning) return;
+        
+        if (isManualStart) {
+            faults1 = 0;
+            faults2 = 0;
+        }
+
+        faults1Element.textContent = `Faults: ${faults1}`;
+        faults2Element.textContent = `Faults: ${faults2}`;
+        
         gameRunning = true;
         init();
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -73,25 +105,25 @@ document.addEventListener('DOMContentLoaded', () => {
         let onSnake;
         let foundSpot = false;
 
-        // --- NEW: Targeted Spawning Logic ---
-        // If a player just ate, the target is set to the *other* player.
-        if (foodTargetPlayer !== null && snake1 && snake2) {
+        const applyTargetedSpawning = 
+            foodTargetPlayer !== null && 
+            snake1 && snake1.length <= 3 &&
+            snake2 && snake2.length <= 3;
+
+        if (applyTargetedSpawning) {
             const targetSnake = (foodTargetPlayer === 1) ? snake1 : snake2;
             const head = targetSnake[0];
             
-            // Try up to 50 times to find a valid spot near the target player's head
             for (let i = 0; i < 50; i++) { 
                 const angle = Math.random() * 2 * Math.PI;
-                const radius = 2 + Math.random() * SPAWN_RADIUS; // Spawn 2 to (2+SPAWN_RADIUS) units away
+                const radius = 2 + Math.random() * SPAWN_RADIUS;
                 foodX = Math.round(head.x + Math.cos(angle) * radius);
                 foodY = Math.round(head.y + Math.sin(angle) * radius);
 
-                // --- NEW: Validation (Requirement 1: No Edges) ---
                 if (foodX <= 0 || foodX >= CANVAS_WIDTH_UNITS - 1 || foodY <= 0 || foodY >= CANVAS_HEIGHT_UNITS - 1) {
-                    continue; // Invalid spot (on the edge), try again
+                    continue; 
                 }
 
-                // Check for collision with either snake
                 onSnake = false;
                 for (const part of [...snake1, ...snake2]) {
                     if (part.x === foodX && part.y === foodY) {
@@ -102,19 +134,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (!onSnake) {
                     foundSpot = true;
-                    break; // Found a valid spot!
+                    break; 
                 }
             }
         }
         
-        // --- Fallback/Initial Spawning Logic ---
-        // This runs if it's the first food or if targeted spawning failed to find a spot.
         if (!foundSpot) {
             do {
                 onSnake = false;
-                // --- MODIFIED: Spawn food away from the borders ---
-                foodX = Math.floor(Math.random() * (CANVAS_WIDTH_UNITS - 2)) + 1; // Range: 1 to width-2
-                foodY = Math.floor(Math.random() * (CANVAS_HEIGHT_UNITS - 2)) + 1; // Range: 1 to height-2
+                foodX = Math.floor(Math.random() * (CANVAS_WIDTH_UNITS - 2)) + 1;
+                foodY = Math.floor(Math.random() * (CANVAS_HEIGHT_UNITS - 2)) + 1; 
                 
                 for (const part of [...snake1, ...snake2]) {
                     if (part.x === foodX && part.y === foodY) {
@@ -127,7 +156,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         food = { x: foodX, y: foodY };
         
-        // For the *very first* food spawn, determine who is closer to set the initial target.
         if (foodTargetPlayer === null && snake1 && snake2) {
             const head1 = snake1[0];
             const head2 = snake2[0];
@@ -136,6 +164,9 @@ document.addEventListener('DOMContentLoaded', () => {
             
             foodTargetPlayer = (dist1 <= dist2) ? 1 : 2;
         }
+
+        // --- NEW: Reset the food spawn timer every time food is placed ---
+        foodSpawnFrame = gameFrame;
     }
 
 
@@ -224,10 +255,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const futureMovesB = getPossibleMoves(futureSnakeB, otherSnake).length;
             
             if (futureMovesA !== futureMovesB) {
-                return futureMovesB - futureMovesA; // Prioritize move with more future options
+                return futureMovesB - futureMovesA;
             }
-
-            // If future options are equal, move towards food
             const distA = Math.hypot(nextPosA.x - food.x, nextPosA.y - food.y);
             const distB = Math.hypot(nextPosB.x - food.x, nextPosB.y - food.y);
             
@@ -342,6 +371,16 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function update() {
         const speed = gameMode === 'classic' ? 5 : 2;
+
+        // --- NEW: Food Timeout Logic for Autobot mode ---
+        // This check runs every animation frame for accurate timing.
+        if (p1BotActive && p2BotActive && gameRunning) {
+            if ((gameFrame - foodSpawnFrame) > FOOD_TIMEOUT_FRAMES) {
+                console.log("Food timed out. Respawning.");
+                placeFood(); // This also resets the foodSpawnFrame timer
+            }
+        }
+
         if (gameFrame++ % speed !== 0) return;
         
         if (p1BotActive) nextDirection1 = aiAlgorithms[currentAiIndex].func(snake1, snake2, food, direction1, 1);
@@ -380,7 +419,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 score2++;
                 score2Element.textContent = `Score: ${score2}`;
             }
-            // --- CRITICAL: Set the target for the *next* food to the other player ---
             foodTargetPlayer = (playerNum === 1) ? 2 : 1;
             placeFood();
         } else {
@@ -417,6 +455,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function gameOver(message) {
         gameRunning = false;
+
+        if (message.startsWith('Player 2 Wins')) {
+            faults1++;
+            faults1Element.textContent = `Faults: ${faults1}`;
+        } else if (message.startsWith('Player 1 Wins')) {
+            faults2++;
+            faults2Element.textContent = `Faults: ${faults2}`;
+        }
+
         ctx.fillStyle = 'rgba(40, 44, 52, 0.75)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#abb2bf';
@@ -428,7 +475,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.font = '18px sans-serif';
         ctx.fillText('Restarting in 3 seconds...', canvas.width / 2, canvas.height / 2 + 60);
 
-        setTimeout(startGame, 3000);
+        setTimeout(() => startGame(false), 3000);
     }
 
     function draw() {
@@ -505,7 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
         classicBtn.classList.remove('active');
     });
 
-    startBtn.addEventListener('click', startGame);
+    startBtn.addEventListener('click', () => startGame(true));
 
     // --- Initial Screen and Countdown Logic ---
     function startWelcomeCountdown() {
