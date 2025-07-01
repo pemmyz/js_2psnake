@@ -82,9 +82,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } while (onSnake);
         food = { x: foodX, y: foodY };
         
-        // *** NEW LOGIC TO FIX THE INITIAL RACE CONDITION ***
-        // If it's the start of the game (foodTargetPlayer is null),
-        // assign the first food to the player who is closer.
         if (foodTargetPlayer === null && snake1 && snake2) {
             const head1 = snake1[0];
             const head2 = snake2[0];
@@ -158,15 +155,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function aiSmartGreedy(snake, otherSnake, food, direction, playerNum) {
-        // This AI implements a "turn-taking" strategy to prevent suicidal behavior.
-        
-        // This logic is now correct because foodTargetPlayer is assigned from the very beginning.
         if (foodTargetPlayer === playerNum) {
-            // STRATEGY: Aggressive. Use the best pathfinding algorithm to get the food.
             return aiAStar(snake, otherSnake, food, direction); 
         } else {
-            // STRATEGY: Defensive. It's the other player's "turn" for the food.
-            // The goal is to survive and maximize future options.
             return aiDefensive(snake, otherSnake, food, direction);
         }
     }
@@ -186,9 +177,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const futureMovesB = getPossibleMoves(futureSnakeB, otherSnake).length;
             
             if (futureMovesA !== futureMovesB) {
-                return futureMovesB - futureMovesA;
+                return futureMovesB - futureMovesA; // Prioritize move with more future options
             }
 
+            // If future options are equal, move towards food
             const distA = Math.hypot(nextPosA.x - food.x, nextPosA.y - food.y);
             const distB = Math.hypot(nextPosB.x - food.x, nextPosB.y - food.y);
             
@@ -202,7 +194,24 @@ document.addEventListener('DOMContentLoaded', () => {
     function findPathWithAStar(snake, otherSnake, targetNode) {
         if (!targetNode) return null;
         const startNode = snake[0];
-        const obstacles = new Set([...snake.slice(1).map(p => `${p.x},${p.y}`), ...otherSnake.map(p => `${p.x},${p.y}`)]);
+
+        // --- NEW, MORE ROBUST OBSTACLE CALCULATION ---
+        const obstacles = new Set([...snake.slice(1).map(p => `${p.x},${p.y}`), ...otherSnake.slice(1).map(p => `${p.x},${p.y}`)]);
+        const targetKey = `${targetNode.x},${targetNode.y}`;
+
+        // CRITICAL FIX: Allow pathing to the target even if it's an "obstacle" (like its own tail).
+        obstacles.delete(targetKey);
+
+        // For safety, treat the other snake's head as a potential obstacle,
+        // unless it's on the target square. This helps avoid head-on collisions.
+        const otherHead = otherSnake[0];
+        if (otherHead) {
+            const otherHeadKey = `${otherHead.x},${otherHead.y}`;
+            if (otherHeadKey !== targetKey) {
+                obstacles.add(otherHeadKey);
+            }
+        }
+        // --- END OF NEW OBSTACLE LOGIC ---
 
         let openSet = [startNode];
         let cameFrom = new Map();
@@ -261,17 +270,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function aiAStar(snake, otherSnake, food, direction, playerNum) {
+        // 1. Find a path to the food.
         const pathToFood = findPathWithAStar(snake, otherSnake, food);
+    
+        // 2. If a path to food exists, check if it's a safe path (doesn't lead to a trap).
         if (pathToFood) {
-            return pathToFood;
+            // Create a hypothetical snake as if it has taken the path and eaten the food.
+            const hypotheticalSnake = [food, ...snake]; 
+    
+            // Check if this hypothetical snake has a path to its own new tail.
+            // This is a good measure of whether the snake has trapped itself.
+            const hypotheticalTail = hypotheticalSnake[hypotheticalSnake.length - 1];
+            const pathFromFoodToTail = findPathWithAStar(hypotheticalSnake, otherSnake, hypotheticalTail);
+    
+            // If a path to the future tail exists, the move is considered safe.
+            if (pathFromFoodToTail) {
+                return pathToFood; // It's safe, go for the food!
+            }
+            // If not, the path is a trap. Fall through to survival logic below.
         }
-
+    
+        // SURVIVAL LOGIC (triggers if no path to food, or if the food path is a trap)
+        // Try to find a path to its own tail to stay alive and buy time.
         const tail = snake[snake.length - 1];
         const pathToTail = findPathWithAStar(snake, otherSnake, tail);
         if (pathToTail) {
             return pathToTail;
         }
-
+    
+        // If all else fails, use the defensive algorithm to move to the most open space.
         return aiDefensive(snake, otherSnake, food, direction);
     }
     
