@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const CANVAS_HEIGHT_UNITS = canvas.height / GRID_SIZE;
     const SNAKE_SIZE = 20;
     const FOOD_RADIUS = 8;
+    const SPAWN_RADIUS = 5; // *** NEW: Radius for targeted food spawning ***
     
     let gameMode = 'classic';
     let gameRunning = false;
@@ -66,22 +67,67 @@ document.addEventListener('DOMContentLoaded', () => {
         gameLoop();
     }
 
+    // --- *** MODIFIED placeFood FUNCTION *** ---
     function placeFood() {
         let foodX, foodY;
         let onSnake;
-        do {
-            onSnake = false;
-            foodX = Math.floor(Math.random() * CANVAS_WIDTH_UNITS);
-            foodY = Math.floor(Math.random() * CANVAS_HEIGHT_UNITS);
-            for (const part of [...snake1, ...snake2]) {
-                if (part.x === foodX && part.y === foodY) {
-                    onSnake = true;
-                    break;
+        let foundSpot = false;
+
+        // --- NEW: Targeted Spawning Logic ---
+        // If a player just ate, the target is set to the *other* player.
+        if (foodTargetPlayer !== null && snake1 && snake2) {
+            const targetSnake = (foodTargetPlayer === 1) ? snake1 : snake2;
+            const head = targetSnake[0];
+            
+            // Try up to 50 times to find a valid spot near the target player's head
+            for (let i = 0; i < 50; i++) { 
+                const angle = Math.random() * 2 * Math.PI;
+                const radius = 2 + Math.random() * SPAWN_RADIUS; // Spawn 2 to (2+SPAWN_RADIUS) units away
+                foodX = Math.round(head.x + Math.cos(angle) * radius);
+                foodY = Math.round(head.y + Math.sin(angle) * radius);
+
+                // --- NEW: Validation (Requirement 1: No Edges) ---
+                if (foodX <= 0 || foodX >= CANVAS_WIDTH_UNITS - 1 || foodY <= 0 || foodY >= CANVAS_HEIGHT_UNITS - 1) {
+                    continue; // Invalid spot (on the edge), try again
+                }
+
+                // Check for collision with either snake
+                onSnake = false;
+                for (const part of [...snake1, ...snake2]) {
+                    if (part.x === foodX && part.y === foodY) {
+                        onSnake = true;
+                        break;
+                    }
+                }
+
+                if (!onSnake) {
+                    foundSpot = true;
+                    break; // Found a valid spot!
                 }
             }
-        } while (onSnake);
+        }
+        
+        // --- Fallback/Initial Spawning Logic ---
+        // This runs if it's the first food or if targeted spawning failed to find a spot.
+        if (!foundSpot) {
+            do {
+                onSnake = false;
+                // --- MODIFIED: Spawn food away from the borders ---
+                foodX = Math.floor(Math.random() * (CANVAS_WIDTH_UNITS - 2)) + 1; // Range: 1 to width-2
+                foodY = Math.floor(Math.random() * (CANVAS_HEIGHT_UNITS - 2)) + 1; // Range: 1 to height-2
+                
+                for (const part of [...snake1, ...snake2]) {
+                    if (part.x === foodX && part.y === foodY) {
+                        onSnake = true;
+                        break;
+                    }
+                }
+            } while (onSnake);
+        }
+        
         food = { x: foodX, y: foodY };
         
+        // For the *very first* food spawn, determine who is closer to set the initial target.
         if (foodTargetPlayer === null && snake1 && snake2) {
             const head1 = snake1[0];
             const head2 = snake2[0];
@@ -91,6 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
             foodTargetPlayer = (dist1 <= dist2) ? 1 : 2;
         }
     }
+
 
     // --- AI ALGORITHMS ---
     const aiAlgorithms = [
@@ -195,15 +242,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!targetNode) return null;
         const startNode = snake[0];
 
-        // --- NEW, MORE ROBUST OBSTACLE CALCULATION ---
         const obstacles = new Set([...snake.slice(1).map(p => `${p.x},${p.y}`), ...otherSnake.slice(1).map(p => `${p.x},${p.y}`)]);
         const targetKey = `${targetNode.x},${targetNode.y}`;
-
-        // CRITICAL FIX: Allow pathing to the target even if it's an "obstacle" (like its own tail).
         obstacles.delete(targetKey);
 
-        // For safety, treat the other snake's head as a potential obstacle,
-        // unless it's on the target square. This helps avoid head-on collisions.
         const otherHead = otherSnake[0];
         if (otherHead) {
             const otherHeadKey = `${otherHead.x},${otherHead.y}`;
@@ -211,7 +253,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 obstacles.add(otherHeadKey);
             }
         }
-        // --- END OF NEW OBSTACLE LOGIC ---
 
         let openSet = [startNode];
         let cameFrom = new Map();
@@ -270,35 +311,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function aiAStar(snake, otherSnake, food, direction, playerNum) {
-        // 1. Find a path to the food.
         const pathToFood = findPathWithAStar(snake, otherSnake, food);
     
-        // 2. If a path to food exists, check if it's a safe path (doesn't lead to a trap).
         if (pathToFood) {
-            // Create a hypothetical snake as if it has taken the path and eaten the food.
             const hypotheticalSnake = [food, ...snake]; 
-    
-            // Check if this hypothetical snake has a path to its own new tail.
-            // This is a good measure of whether the snake has trapped itself.
             const hypotheticalTail = hypotheticalSnake[hypotheticalSnake.length - 1];
             const pathFromFoodToTail = findPathWithAStar(hypotheticalSnake, otherSnake, hypotheticalTail);
     
-            // If a path to the future tail exists, the move is considered safe.
             if (pathFromFoodToTail) {
-                return pathToFood; // It's safe, go for the food!
+                return pathToFood;
             }
-            // If not, the path is a trap. Fall through to survival logic below.
         }
     
-        // SURVIVAL LOGIC (triggers if no path to food, or if the food path is a trap)
-        // Try to find a path to its own tail to stay alive and buy time.
         const tail = snake[snake.length - 1];
         const pathToTail = findPathWithAStar(snake, otherSnake, tail);
         if (pathToTail) {
             return pathToTail;
         }
     
-        // If all else fails, use the defensive algorithm to move to the most open space.
         return aiDefensive(snake, otherSnake, food, direction);
     }
     
@@ -350,6 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 score2++;
                 score2Element.textContent = `Score: ${score2}`;
             }
+            // --- CRITICAL: Set the target for the *next* food to the other player ---
             foodTargetPlayer = (playerNum === 1) ? 2 : 1;
             placeFood();
         } else {
