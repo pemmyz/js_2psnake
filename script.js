@@ -31,11 +31,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let snake1, score1, direction1, nextDirection1;
     let snake2, score2, direction2, nextDirection2;
     let food;
+    let foodTargetPlayer = null; // Tracks which player is "supposed" to get the next food.
 
     // --- AI State ---
     let p1BotActive = false;
     let p2BotActive = false;
-    let currentAiIndex = 1; // Default to Greedy (was 4 for A*)
+    let currentAiIndex = 2; // Default to Smart Greedy for the new cooperative behavior
 
     // --- Game Setup & Initialization ---
     function init() {
@@ -51,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
         nextDirection2 = { x: -1, y: 0 };
         score2Element.textContent = `Score: 0`;
 
+        foodTargetPlayer = null; // Reset food target on new game
         gameFrame = 0;
         placeFood();
     }
@@ -79,6 +81,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } while (onSnake);
         food = { x: foodX, y: foodY };
+        
+        // *** NEW LOGIC TO FIX THE INITIAL RACE CONDITION ***
+        // If it's the start of the game (foodTargetPlayer is null),
+        // assign the first food to the player who is closer.
+        if (foodTargetPlayer === null && snake1 && snake2) {
+            const head1 = snake1[0];
+            const head2 = snake2[0];
+            const dist1 = Math.hypot(head1.x - food.x, head1.y - food.y);
+            const dist2 = Math.hypot(head2.x - food.x, head2.y - food.y);
+            
+            foodTargetPlayer = (dist1 <= dist2) ? 1 : 2;
+        }
     }
 
     // --- AI ALGORITHMS ---
@@ -110,12 +124,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const nextPos = { x: head.x + move.x, y: head.y + move.y };
             if (nextPos.x < 0 || nextPos.x >= CANVAS_WIDTH_UNITS || nextPos.y < 0 || nextPos.y >= CANVAS_HEIGHT_UNITS) return false;
             if (obstacles.has(`${nextPos.x},${nextPos.y}`)) return false;
+            if (otherSnake.length > 1 && nextPos.x === otherSnake[0].x && nextPos.y === otherSnake[0].y) {
+                 const theirNextPos = { x: otherSnake[0].x + (otherSnake[0].x - otherSnake[1].x), y: otherSnake[0].y + (otherSnake[0].y - otherSnake[1].y) };
+                 if (nextPos.x === theirNextPos.x && nextPos.y === theirNextPos.y) return false;
+            }
             return true;
         });
     }
 
     // --- Simple AIs ---
-    function aiRandom(snake, otherSnake, food, direction) {
+    function aiRandom(snake, otherSnake, food, direction, playerNum) {
         let possibleMoves = getPossibleMoves(snake, otherSnake);
         if (possibleMoves.length === 0) return direction; 
         const straightMove = possibleMoves.find(m => m.x === direction.x && m.y === direction.y);
@@ -123,36 +141,37 @@ document.addEventListener('DOMContentLoaded', () => {
         return possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
     }
 
-    function aiGreedy(snake, otherSnake, food, direction) {
+    function aiGreedy(snake, otherSnake, food, direction, playerNum) {
         const head = snake[0];
-        if (!food) return aiDefensive(snake, otherSnake, food, direction);
+        if (!food) return aiDefensive(snake, otherSnake, food, direction, playerNum);
 
         let possibleMoves = getPossibleMoves(snake, otherSnake);
-        if (possibleMoves.length === 0) return aiDefensive(snake, otherSnake, food, direction);
+        if (possibleMoves.length === 0) return aiDefensive(snake, otherSnake, food, direction, playerNum);
 
-        const safeMoves = possibleMoves.filter(move => {
-            const nextPos = { x: head.x + move.x, y: head.y + move.y };
-            const futureSnake = [nextPos, ...snake];
-            return getPossibleMoves(futureSnake, otherSnake).length > 0;
-        });
-
-        const movesToConsider = safeMoves.length > 0 ? safeMoves : possibleMoves;
-
-        movesToConsider.sort((a, b) => {
+        possibleMoves.sort((a, b) => {
             const distA = Math.hypot(head.x + a.x - food.x, head.y + a.y - food.y);
             const distB = Math.hypot(head.x + b.x - food.x, head.y + b.y - food.y);
             return distA - distB;
         });
 
-        return movesToConsider[0];
+        return possibleMoves[0];
     }
-
     
-    function aiSmartGreedy(snake, otherSnake, food, direction) {
-       return aiGreedy(snake, otherSnake, food, direction);
+    function aiSmartGreedy(snake, otherSnake, food, direction, playerNum) {
+        // This AI implements a "turn-taking" strategy to prevent suicidal behavior.
+        
+        // This logic is now correct because foodTargetPlayer is assigned from the very beginning.
+        if (foodTargetPlayer === playerNum) {
+            // STRATEGY: Aggressive. Use the best pathfinding algorithm to get the food.
+            return aiAStar(snake, otherSnake, food, direction); 
+        } else {
+            // STRATEGY: Defensive. It's the other player's "turn" for the food.
+            // The goal is to survive and maximize future options.
+            return aiDefensive(snake, otherSnake, food, direction);
+        }
     }
 
-    function aiDefensive(snake, otherSnake, food, direction) {
+    function aiDefensive(snake, otherSnake, food, direction, playerNum) {
         const head = snake[0];
         let possibleMoves = getPossibleMoves(snake, otherSnake);
         if (possibleMoves.length === 0) return direction;
@@ -165,7 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const nextPosB = { x: head.x + b.x, y: head.y + b.y };
             const futureSnakeB = [nextPosB, ...snake];
             const futureMovesB = getPossibleMoves(futureSnakeB, otherSnake).length;
-
+            
             if (futureMovesA !== futureMovesB) {
                 return futureMovesB - futureMovesA;
             }
@@ -181,8 +200,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- Advanced AI Logic ---
     function findPathWithAStar(snake, otherSnake, targetNode) {
+        if (!targetNode) return null;
         const startNode = snake[0];
-        const obstacles = new Set([...snake.slice(1).map(p => `${p.x},${p.y}`), ...otherSnake.slice(1).map(p => `${p.x},${p.y}`)]);
+        const obstacles = new Set([...snake.slice(1).map(p => `${p.x},${p.y}`), ...otherSnake.map(p => `${p.x},${p.y}`)]);
 
         let openSet = [startNode];
         let cameFrom = new Map();
@@ -214,6 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const nextStep = path[0];
                     return { x: nextStep.x - startNode.x, y: nextStep.y - startNode.y };
                 }
+                return null;
             }
 
             openSet.splice(lowestIndex, 1);
@@ -239,47 +260,19 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     }
 
-    function aiAStar(snake, otherSnake, food, direction) {
-        // 1. Primary Objective: Find a path to the food.
+    function aiAStar(snake, otherSnake, food, direction, playerNum) {
         const pathToFood = findPathWithAStar(snake, otherSnake, food);
         if (pathToFood) {
             return pathToFood;
         }
 
-        // 2. Secondary Objective: If food is unreachable, follow your own tail to survive.
         const tail = snake[snake.length - 1];
         const pathToTail = findPathWithAStar(snake, otherSnake, tail);
         if (pathToTail) {
             return pathToTail;
         }
 
-        // 3. Last Resort: If all pathfinding fails, find the best possible adjacent square.
-        const possibleMoves = getPossibleMoves(snake, otherSnake);
-        
-        if (possibleMoves.length === 0) {
-            return direction; 
-        }
-        
-        possibleMoves.sort((a, b) => {
-            const head = snake[0];
-            const nextPosA = { x: head.x + a.x, y: head.y + a.y };
-            const futureSnakeA = [nextPosA, ...snake];
-            const futureMovesA = getPossibleMoves(futureSnakeA, otherSnake).length;
-
-            const nextPosB = { x: head.x + b.x, y: head.y + b.y };
-            const futureSnakeB = [nextPosB, ...snake];
-            const futureMovesB = getPossibleMoves(futureSnakeB, otherSnake).length;
-
-            if (futureMovesA !== futureMovesB) {
-                return futureMovesB - futureMovesA;
-            }
-            
-            const distA = Math.hypot(nextPosA.x - food.x, nextPosA.y - food.y);
-            const distB = Math.hypot(nextPosB.x - food.x, nextPosB.y - food.y);
-            return distA - distB;
-        });
-
-        return possibleMoves[0];
+        return aiDefensive(snake, otherSnake, food, direction);
     }
     
     // --- Game Loop ---
@@ -294,8 +287,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const speed = gameMode === 'classic' ? 5 : 2;
         if (gameFrame++ % speed !== 0) return;
         
-        if (p1BotActive) nextDirection1 = aiAlgorithms[currentAiIndex].func(snake1, snake2, food, direction1);
-        if (p2BotActive) nextDirection2 = aiAlgorithms[currentAiIndex].func(snake2, snake1, food, direction2);
+        if (p1BotActive) nextDirection1 = aiAlgorithms[currentAiIndex].func(snake1, snake2, food, direction1, 1);
+        if (p2BotActive) nextDirection2 = aiAlgorithms[currentAiIndex].func(snake2, snake1, food, direction2, 2);
 
         moveSnake(snake1, direction1, nextDirection1, 1);
         moveSnake(snake2, direction2, nextDirection2, 2);
@@ -330,6 +323,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 score2++;
                 score2Element.textContent = `Score: ${score2}`;
             }
+            foodTargetPlayer = (playerNum === 1) ? 2 : 1;
             placeFood();
         } else {
             snake.pop();
@@ -457,7 +451,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Initial Screen and Countdown Logic ---
     function startWelcomeCountdown() {
-        clearInterval(countdownInterval); // Ensure no multiple intervals
+        clearInterval(countdownInterval);
 
         countdownInterval = setInterval(() => {
             if (gameRunning) {
@@ -465,7 +459,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // Drawing logic
             ctx.fillStyle = '#1c1f24';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#61afef';
@@ -476,7 +469,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.font = '20px sans-serif';
             ctx.fillText('Select a mode and press "Start Game" to begin.', canvas.width / 2, canvas.height / 2);
 
-            // Display countdown or starting message
             if (countdownValue >= 1) {
                 ctx.font = '18px sans-serif';
                 ctx.fillStyle = '#e5c07b';
@@ -489,8 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             countdownValue--;
 
-            // Auto-start game when countdown finishes
-            if (countdownValue < -1) { // Delay for 1s after showing "Starting"
+            if (countdownValue < -1) { 
                 clearInterval(countdownInterval);
                 if (!gameRunning) {
                     p1BotActive = true;
