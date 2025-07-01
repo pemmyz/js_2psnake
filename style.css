@@ -46,11 +46,17 @@ canvas {
     color: #e5c07b;
 }
 
-.score {
-    font-size: 1.2rem;
+.total-score {
+    font-size: 1.3rem;
     font-weight: bold;
-    color: #98c379;
-    margin-bottom: 5px; /* Adjusted for tighter spacing with faults */
+    color: #98c379; /* Bright green for primary score */
+    margin-bottom: 5px;
+}
+
+.score {
+    font-size: 1.1rem;
+    color: #abb2bf; /* Standard text color for secondary score */
+    margin-bottom: 5px; 
 }
 
 .faults {

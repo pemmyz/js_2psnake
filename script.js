@@ -2,8 +2,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- DOM Elements ---
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
-    const score1Element = document.getElementById('score1');
-    const score2Element = document.getElementById('score2');
+    // Renamed and new score elements
+    const currentScore1Element = document.getElementById('current-score1');
+    const currentScore2Element = document.getElementById('current-score2');
+    const totalScore1Element = document.getElementById('total-score1');
+    const totalScore2Element = document.getElementById('total-score2');
     const faults1Element = document.getElementById('faults1');
     const faults2Element = document.getElementById('faults2');
     const classicBtn = document.getElementById('classic-btn');
@@ -21,7 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const SNAKE_SIZE = 20;
     const FOOD_RADIUS = 8;
     const SPAWN_RADIUS = 5;
-    // --- NEW: Food Timeout Constant ---
     const FOOD_TIMEOUT_FRAMES = 6 * 60; // 6 seconds at 60fps
 
     let gameMode = 'classic';
@@ -33,15 +35,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let countdownInterval;
     let countdownValue = 7;
 
-    let snake1, score1, direction1, nextDirection1;
-    let snake2, score2, direction2, nextDirection2;
+    let snake1, currentScore1, direction1, nextDirection1;
+    let snake2, currentScore2, direction2, nextDirection2;
     let food;
     let foodTargetPlayer = null; 
-
-    // --- NEW: Food Spawn Timer ---
     let foodSpawnFrame = 0;
     
-    // --- Fault Tracking State ---
+    // --- NEW: Persistent State (Total Score & Faults) ---
+    let totalScore1 = 0;
+    let totalScore2 = 0;
     let faults1 = 0;
     let faults2 = 0;
 
@@ -54,27 +56,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function init() {
         const startX1 = 8;
         const startY1 = 10;
-        snake1 = [
-            { x: startX1, y: startY1 },      
-            { x: startX1 - 1, y: startY1 },  
-            { x: startX1 - 2, y: startY1 }   
-        ];
-        score1 = 0;
+        snake1 = [ { x: startX1, y: startY1 }, { x: startX1 - 1, y: startY1 }, { x: startX1 - 2, y: startY1 }];
+        currentScore1 = 0; // Only reset current score
         direction1 = { x: 1, y: 0 };
         nextDirection1 = { x: 1, y: 0 };
-        score1Element.textContent = `Score: 0`;
+        currentScore1Element.textContent = `Current: 0`;
 
         const startX2 = CANVAS_WIDTH_UNITS - 9;
         const startY2 = 10;
-        snake2 = [
-            { x: startX2, y: startY2 },      
-            { x: startX2 + 1, y: startY2 },  
-            { x: startX2 + 2, y: startY2 }   
-        ];
-        score2 = 0;
+        snake2 = [ { x: startX2, y: startY2 }, { x: startX2 + 1, y: startY2 }, { x: startX2 + 2, y: startY2 }];
+        currentScore2 = 0; // Only reset current score
         direction2 = { x: -1, y: 0 };
         nextDirection2 = { x: -1, y: 0 };
-        score2Element.textContent = `Score: 0`;
+        currentScore2Element.textContent = `Current: 0`;
 
         foodTargetPlayer = null; 
         gameFrame = 0;
@@ -85,21 +79,26 @@ document.addEventListener('DOMContentLoaded', () => {
         clearInterval(countdownInterval); 
         if (gameRunning) return;
         
+        // On manual start, reset all persistent stats
         if (isManualStart) {
+            totalScore1 = 0;
+            totalScore2 = 0;
             faults1 = 0;
             faults2 = 0;
         }
 
+        // Update persistent stat displays every time a game starts
+        totalScore1Element.textContent = `Total: ${totalScore1}`;
+        totalScore2Element.textContent = `Total: ${totalScore2}`;
         faults1Element.textContent = `Faults: ${faults1}`;
         faults2Element.textContent = `Faults: ${faults2}`;
         
         gameRunning = true;
-        init();
+        init(); // Resets round-specific stats
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
         gameLoop();
     }
 
-    // --- *** MODIFIED placeFood FUNCTION *** ---
     function placeFood() {
         let foodX, foodY;
         let onSnake;
@@ -165,7 +164,6 @@ document.addEventListener('DOMContentLoaded', () => {
             foodTargetPlayer = (dist1 <= dist2) ? 1 : 2;
         }
 
-        // --- NEW: Reset the food spawn timer every time food is placed ---
         foodSpawnFrame = gameFrame;
     }
 
@@ -188,11 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getPossibleMoves(snake, otherSnake) {
         const head = snake[0];
-        const possibleMoves = [
-            { x: 0, y: -1 }, { x: 0, y: 1 },
-            { x: -1, y: 0 }, { x: 1, y: 0 },
-        ];
-        
+        const possibleMoves = [ { x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 }];
         const obstacles = new Set([...snake.map(p => `${p.x},${p.y}`), ...otherSnake.map(p => `${p.x},${p.y}`)]);
 
         return possibleMoves.filter(move => {
@@ -207,7 +201,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- Simple AIs ---
     function aiRandom(snake, otherSnake, food, direction, playerNum) {
         let possibleMoves = getPossibleMoves(snake, otherSnake);
         if (possibleMoves.length === 0) return direction; 
@@ -219,16 +212,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function aiGreedy(snake, otherSnake, food, direction, playerNum) {
         const head = snake[0];
         if (!food) return aiDefensive(snake, otherSnake, food, direction, playerNum);
-
         let possibleMoves = getPossibleMoves(snake, otherSnake);
         if (possibleMoves.length === 0) return aiDefensive(snake, otherSnake, food, direction, playerNum);
-
         possibleMoves.sort((a, b) => {
             const distA = Math.hypot(head.x + a.x - food.x, head.y + a.y - food.y);
             const distB = Math.hypot(head.x + b.x - food.x, head.y + b.y - food.y);
             return distA - distB;
         });
-
         return possibleMoves[0];
     }
     
@@ -244,56 +234,40 @@ document.addEventListener('DOMContentLoaded', () => {
         const head = snake[0];
         let possibleMoves = getPossibleMoves(snake, otherSnake);
         if (possibleMoves.length === 0) return direction;
-
         possibleMoves.sort((a, b) => {
             const nextPosA = { x: head.x + a.x, y: head.y + a.y };
             const futureSnakeA = [nextPosA, ...snake];
             const futureMovesA = getPossibleMoves(futureSnakeA, otherSnake).length;
-
             const nextPosB = { x: head.x + b.x, y: head.y + b.y };
             const futureSnakeB = [nextPosB, ...snake];
             const futureMovesB = getPossibleMoves(futureSnakeB, otherSnake).length;
-            
-            if (futureMovesA !== futureMovesB) {
-                return futureMovesB - futureMovesA;
-            }
+            if (futureMovesA !== futureMovesB) { return futureMovesB - futureMovesA; }
             const distA = Math.hypot(nextPosA.x - food.x, nextPosA.y - food.y);
             const distB = Math.hypot(nextPosB.x - food.x, nextPosB.y - food.y);
-            
             return distA - distB;
         });
-
         return possibleMoves[0];
     }
     
-    // --- Advanced AI Logic ---
     function findPathWithAStar(snake, otherSnake, targetNode) {
         if (!targetNode) return null;
         const startNode = snake[0];
-
         const obstacles = new Set([...snake.slice(1).map(p => `${p.x},${p.y}`), ...otherSnake.slice(1).map(p => `${p.x},${p.y}`)]);
         const targetKey = `${targetNode.x},${targetNode.y}`;
         obstacles.delete(targetKey);
-
         const otherHead = otherSnake[0];
         if (otherHead) {
             const otherHeadKey = `${otherHead.x},${otherHead.y}`;
-            if (otherHeadKey !== targetKey) {
-                obstacles.add(otherHeadKey);
-            }
+            if (otherHeadKey !== targetKey) { obstacles.add(otherHeadKey); }
         }
-
         let openSet = [startNode];
         let cameFrom = new Map();
         let gScore = new Map([[ `${startNode.x},${startNode.y}`, 0 ]]);
         let fScore = new Map([[ `${startNode.x},${startNode.y}`, Math.hypot(startNode.x - targetNode.x, startNode.y - targetNode.y) ]]);
-        
         const maxIterations = 2000;
         let iterations = 0;
-
         while (openSet.length > 0) {
             if (iterations++ > maxIterations) return null;
-
             let lowestIndex = 0;
             for (let i = 1; i < openSet.length; i++) {
                 if ((fScore.get(`${openSet[i].x},${openSet[i].y}`) || Infinity) < (fScore.get(`${openSet[lowestIndex].x},${openSet[lowestIndex].y}`) || Infinity)) {
@@ -301,7 +275,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             let current = openSet[lowestIndex];
-            
             if (current.x === targetNode.x && current.y === targetNode.y) {
                 let path = [];
                 let temp = current;
@@ -315,17 +288,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return null;
             }
-
             openSet.splice(lowestIndex, 1);
-            
             const neighbors = [{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}].map(d => ({x: current.x+d.x, y: current.y+d.y}));
-            
             for (const neighbor of neighbors) {
                 const neighborKey = `${neighbor.x},${neighbor.y}`;
                 if (neighbor.x < 0 || neighbor.x >= CANVAS_WIDTH_UNITS || neighbor.y < 0 || neighbor.y >= CANVAS_HEIGHT_UNITS || obstacles.has(neighborKey)) continue;
-
                 let tentativeGScore = (gScore.get(`${current.x},${current.y}`) || Infinity) + 1;
-
                 if (tentativeGScore < (gScore.get(neighborKey) || Infinity)) {
                     cameFrom.set(neighborKey, current);
                     gScore.set(neighborKey, tentativeGScore);
@@ -341,27 +309,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function aiAStar(snake, otherSnake, food, direction, playerNum) {
         const pathToFood = findPathWithAStar(snake, otherSnake, food);
-    
         if (pathToFood) {
             const hypotheticalSnake = [food, ...snake]; 
             const hypotheticalTail = hypotheticalSnake[hypotheticalSnake.length - 1];
             const pathFromFoodToTail = findPathWithAStar(hypotheticalSnake, otherSnake, hypotheticalTail);
-    
-            if (pathFromFoodToTail) {
-                return pathToFood;
-            }
+            if (pathFromFoodToTail) { return pathToFood; }
         }
-    
         const tail = snake[snake.length - 1];
         const pathToTail = findPathWithAStar(snake, otherSnake, tail);
-        if (pathToTail) {
-            return pathToTail;
-        }
-    
+        if (pathToTail) { return pathToTail; }
         return aiDefensive(snake, otherSnake, food, direction);
     }
     
-    // --- Game Loop ---
     function gameLoop() {
         if (!gameRunning) return;
         update();
@@ -371,16 +330,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function update() {
         const speed = gameMode === 'classic' ? 5 : 2;
-
-        // --- NEW: Food Timeout Logic for Autobot mode ---
-        // This check runs every animation frame for accurate timing.
         if (p1BotActive && p2BotActive && gameRunning) {
             if ((gameFrame - foodSpawnFrame) > FOOD_TIMEOUT_FRAMES) {
                 console.log("Food timed out. Respawning.");
-                placeFood(); // This also resets the foodSpawnFrame timer
+                placeFood(); 
             }
         }
-
         if (gameFrame++ % speed !== 0) return;
         
         if (p1BotActive) nextDirection1 = aiAlgorithms[currentAiIndex].func(snake1, snake2, food, direction1, 1);
@@ -396,12 +351,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (nextDirection && ((nextDirection.x !== 0 && direction.x !== -nextDirection.x) || (nextDirection.y !== 0 && direction.y !== -nextDirection.y))) {
             Object.assign(direction, nextDirection);
         }
-
         const head = { ...snake[0] };
         head.x += direction.x;
         head.y += direction.y;
         snake.unshift(head);
-
         let ateFood = false;
         if (gameMode === 'classic') {
              if (head.x === food.x && head.y === food.y) ateFood = true;
@@ -413,11 +366,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (ateFood) {
             if (playerNum === 1) {
-                score1++;
-                score1Element.textContent = `Score: ${score1}`;
+                currentScore1++;
+                totalScore1++;
+                currentScore1Element.textContent = `Current: ${currentScore1}`;
+                totalScore1Element.textContent = `Total: ${totalScore1}`;
             } else {
-                score2++;
-                score2Element.textContent = `Score: ${score2}`;
+                currentScore2++;
+                totalScore2++;
+                currentScore2Element.textContent = `Current: ${currentScore2}`;
+                totalScore2Element.textContent = `Total: ${totalScore2}`;
             }
             foodTargetPlayer = (playerNum === 1) ? 2 : 1;
             placeFood();
@@ -426,20 +383,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Collision & Drawing ---
     function checkCollisions() {
         const head1 = snake1[0];
         const head2 = snake2[0];
-        
         if (head1.x < 0 || head1.x >= CANVAS_WIDTH_UNITS || head1.y < 0 || head1.y >= CANVAS_HEIGHT_UNITS) return gameOver('Player 2 Wins! Player 1 hit a wall.');
         if (head2.x < 0 || head2.x >= CANVAS_WIDTH_UNITS || head2.y < 0 || head2.y >= CANVAS_HEIGHT_UNITS) return gameOver('Player 1 Wins! Player 2 hit a wall.');
-        
         if (checkSelfCollision(snake1)) return gameOver('Player 2 Wins! Player 1 crashed into itself.');
         if (checkSelfCollision(snake2)) return gameOver('Player 1 Wins! Player 2 crashed into itself.');
-
         if (checkSnakeCollision(head1, snake2)) return gameOver('Player 2 Wins! Player 1 crashed into Player 2.');
         if (checkSnakeCollision(head2, snake1)) return gameOver('Player 1 Wins! Player 2 crashed into Player 1.');
-
         if (head1.x === head2.x && head1.y === head2.y) return gameOver("It's a tie! Head-on collision.");
     }
 
@@ -455,7 +407,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function gameOver(message) {
         gameRunning = false;
-
         if (message.startsWith('Player 2 Wins')) {
             faults1++;
             faults1Element.textContent = `Faults: ${faults1}`;
@@ -463,7 +414,6 @@ document.addEventListener('DOMContentLoaded', () => {
             faults2++;
             faults2Element.textContent = `Faults: ${faults2}`;
         }
-
         ctx.fillStyle = 'rgba(40, 44, 52, 0.75)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = '#abb2bf';
@@ -474,19 +424,16 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.fillText(message, canvas.width / 2, canvas.height / 2 + 10);
         ctx.font = '18px sans-serif';
         ctx.fillText('Restarting in 3 seconds...', canvas.width / 2, canvas.height / 2 + 60);
-
         setTimeout(() => startGame(false), 3000);
     }
 
     function draw() {
         ctx.fillStyle = '#1c1f24';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
         ctx.fillStyle = '#c678dd';
         ctx.beginPath();
         ctx.arc(food.x * GRID_SIZE + GRID_SIZE / 2, food.y * GRID_SIZE + GRID_SIZE / 2, FOOD_RADIUS, 0, Math.PI * 2);
         ctx.fill();
-
         drawSnake(snake1, '#61afef');
         drawSnake(snake2, '#e5c07b');
     }
@@ -508,16 +455,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // --- Event Listeners ---
     document.addEventListener('keydown', e => {
         if (e.key >= '0' && e.key <= '4') {
             const index = parseInt(e.key);
-            if (index < aiAlgorithms.length) {
-                updateAiChoice(index);
-            }
+            if (index < aiAlgorithms.length) { updateAiChoice(index); }
             return;
         }
-
         switch (e.key) {
             case 'w': case 'W': if (direction1.y === 0 && !p1BotActive) nextDirection1 = { x: 0, y: -1 }; break;
             case 's': case 'S': if (direction1.y === 0 && !p1BotActive) nextDirection1 = { x: 0, y: 1 }; break;
@@ -530,40 +473,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    p1BotBtn.addEventListener('click', () => {
-        p1BotActive = !p1BotActive;
-        p1BotBtn.classList.toggle('active', p1BotActive);
-    });
-
-    p2BotBtn.addEventListener('click', () => {
-        p2BotActive = !p2BotActive;
-        p2BotBtn.classList.toggle('active', p2BotActive);
-    });
-
-    classicBtn.addEventListener('click', () => {
-        gameMode = 'classic';
-        classicBtn.classList.add('active');
-        modernBtn.classList.remove('active');
-    });
-
-    modernBtn.addEventListener('click', () => {
-        gameMode = 'modern';
-        modernBtn.classList.add('active');
-        classicBtn.classList.remove('active');
-    });
-
+    p1BotBtn.addEventListener('click', () => { p1BotActive = !p1BotActive; p1BotBtn.classList.toggle('active', p1BotActive); });
+    p2BotBtn.addEventListener('click', () => { p2BotActive = !p2BotActive; p2BotBtn.classList.toggle('active', p2BotActive); });
+    classicBtn.addEventListener('click', () => { gameMode = 'classic'; classicBtn.classList.add('active'); modernBtn.classList.remove('active'); });
+    modernBtn.addEventListener('click', () => { gameMode = 'modern'; modernBtn.classList.add('active'); classicBtn.classList.remove('active'); });
     startBtn.addEventListener('click', () => startGame(true));
 
-    // --- Initial Screen and Countdown Logic ---
     function startWelcomeCountdown() {
         clearInterval(countdownInterval);
-
         countdownInterval = setInterval(() => {
-            if (gameRunning) {
-                clearInterval(countdownInterval);
-                return;
-            }
-
+            if (gameRunning) { clearInterval(countdownInterval); return; }
             ctx.fillStyle = '#1c1f24';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#61afef';
@@ -573,7 +492,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.fillStyle = '#abb2bf';
             ctx.font = '20px sans-serif';
             ctx.fillText('Select a mode and press "Start Game" to begin.', canvas.width / 2, canvas.height / 2);
-
             if (countdownValue >= 1) {
                 ctx.font = '18px sans-serif';
                 ctx.fillStyle = '#e5c07b';
@@ -583,9 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.fillStyle = '#98c379';
                 ctx.fillText('Starting bot match!', canvas.width / 2, canvas.height / 2 + 50);
             }
-
             countdownValue--;
-
             if (countdownValue < -1) { 
                 clearInterval(countdownInterval);
                 if (!gameRunning) {
