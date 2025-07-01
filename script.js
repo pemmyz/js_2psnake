@@ -125,21 +125,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function aiGreedy(snake, otherSnake, food, direction) {
         const head = snake[0];
+        if (!food) return aiDefensive(snake, otherSnake, food, direction);
+
         let possibleMoves = getPossibleMoves(snake, otherSnake);
-        if (possibleMoves.length === 0) return direction;
+        if (possibleMoves.length === 0) return aiDefensive(snake, otherSnake, food, direction);
+
         const safeMoves = possibleMoves.filter(move => {
             const nextPos = { x: head.x + move.x, y: head.y + move.y };
             const futureSnake = [nextPos, ...snake];
             return getPossibleMoves(futureSnake, otherSnake).length > 0;
         });
+
         const movesToConsider = safeMoves.length > 0 ? safeMoves : possibleMoves;
+
         movesToConsider.sort((a, b) => {
             const distA = Math.hypot(head.x + a.x - food.x, head.y + a.y - food.y);
             const distB = Math.hypot(head.x + b.x - food.x, head.y + b.y - food.y);
             return distA - distB;
         });
+
         return movesToConsider[0];
     }
+
     
     function aiSmartGreedy(snake, otherSnake, food, direction) {
        return aiGreedy(snake, otherSnake, food, direction);
