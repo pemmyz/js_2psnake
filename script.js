@@ -54,7 +54,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- AI State ---
     let p1BotActive = false;
     let p2BotActive = false;
-    let currentAiIndex = 2; 
+    let p1AiIndex = 1; // Default AI for Player 1 (Greedy)
+    let p2AiIndex = 2; // Default AI for Player 2 (Smart Greedy)
 
     // --- Game Setup & Initialization ---
     function init() {
@@ -183,11 +184,17 @@ document.addEventListener('DOMContentLoaded', () => {
         { name: 'A* Pathfind', func: aiAStar },
     ];
 
-    function updateAiChoice(newIndex) {
-        currentAiIndex = newIndex;
-        const aiName = aiAlgorithms[currentAiIndex].name;
-        p1AiName.textContent = aiName;
-        p2AiName.textContent = aiName;
+    function updateAiChoice(playerNum, newIndex) {
+        if (newIndex >= aiAlgorithms.length) return; // Safety check
+
+        const aiName = aiAlgorithms[newIndex].name;
+        if (playerNum === 1) {
+            p1AiIndex = newIndex;
+            p1AiName.textContent = aiName;
+        } else if (playerNum === 2) {
+            p2AiIndex = newIndex;
+            p2AiName.textContent = aiName;
+        }
     }
 
     function getPossibleMoves(snake, otherSnake) {
@@ -372,8 +379,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (gameFrame++ % speed !== 0) return;
         
-        if (p1BotActive) nextDirection1 = aiAlgorithms[currentAiIndex].func(snake1, snake2, food, direction1, 1);
-        if (p2BotActive) nextDirection2 = aiAlgorithms[currentAiIndex].func(snake2, snake1, food, direction2, 2);
+        if (p1BotActive) nextDirection1 = aiAlgorithms[p1AiIndex].func(snake1, snake2, food, direction1, 1);
+        if (p2BotActive) nextDirection2 = aiAlgorithms[p2AiIndex].func(snake2, snake1, food, direction2, 2);
 
         moveSnake(snake1, direction1, nextDirection1, 1);
         moveSnake(snake2, direction2, nextDirection2, 2);
@@ -490,11 +497,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     document.addEventListener('keydown', e => {
-        if (e.key >= '0' && e.key <= '4') {
-            const index = parseInt(e.key);
-            if (index < aiAlgorithms.length) { updateAiChoice(index); }
-            return;
+        // Player 1 AI selection: Keys 1-5
+        if (e.key >= '1' && e.key <= '5') {
+            const index = parseInt(e.key, 10) - 1; // 1 -> 0, 2 -> 1, etc.
+            if (index < aiAlgorithms.length) {
+                updateAiChoice(1, index);
+            }
+            return; // Consume the event so it doesn't affect other things
         }
+
+        // Player 2 AI selection: Keys 6-9 and 0
+        if ((e.key >= '6' && e.key <= '9') || e.key === '0') {
+            let index;
+            if (e.key === '0') {
+                index = 4; // Key '0' maps to the 5th algorithm
+            } else {
+                index = parseInt(e.key, 10) - 6; // 6->0, 7->1, 8->2, 9->3
+            }
+             if (index < aiAlgorithms.length) {
+                updateAiChoice(2, index);
+            }
+            return; // Consume the event
+        }
+
+        // Snake movement controls
         switch (e.key) {
             case 'w': case 'W': if (direction1.y === 0 && !p1BotActive) nextDirection1 = { x: 0, y: -1 }; break;
             case 's': case 'S': if (direction1.y === 0 && !p1BotActive) nextDirection1 = { x: 0, y: 1 }; break;
@@ -549,6 +575,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
     }
     
-    updateAiChoice(currentAiIndex);
+    // Set initial AI names in the UI
+    updateAiChoice(1, p1AiIndex);
+    updateAiChoice(2, p2AiIndex);
     startWelcomeCountdown();
 });
