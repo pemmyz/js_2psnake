@@ -24,7 +24,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const SNAKE_SIZE = 20;
     const FOOD_RADIUS = 8;
     const SPAWN_RADIUS = 5;
-    const FOOD_TIMEOUT_FRAMES = 6 * 60; // 6 seconds at 60fps
+    const FOOD_TIMEOUT_FRAMES = 12 * 60; // 12 seconds at 60fps
+    const FOOD_PROXIMITY_TIMEOUT_FRAMES = 5 * 60; // 5 seconds for proximity timeout
+    const FOOD_PROXIMITY_DISTANCE = 1; // Manhattan distance for proximity check
 
     let gameMode = 'classic';
     let gameRunning = false;
@@ -40,6 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let food;
     let foodTargetPlayer = null; 
     let foodSpawnFrame = 0;
+    let player1NearFoodSince = null;
+    let player2NearFoodSince = null;
     
     // --- NEW: Persistent State (Total Score & Faults) ---
     let totalScore1 = 0;
@@ -165,6 +169,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         foodSpawnFrame = gameFrame;
+        player1NearFoodSince = null; // Reset proximity timers
+        player2NearFoodSince = null;
     }
 
 
@@ -330,12 +336,40 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function update() {
         const speed = gameMode === 'classic' ? 5 : 2;
+        
         if (p1BotActive && p2BotActive && gameRunning) {
-            if ((gameFrame - foodSpawnFrame) > FOOD_TIMEOUT_FRAMES) {
-                console.log("Food timed out. Respawning.");
-                placeFood(); 
+            // Condition 1: Global 12-second timeout
+            const globalTimeout = (gameFrame - foodSpawnFrame) > FOOD_TIMEOUT_FRAMES;
+
+            // Condition 2: Player 1 proximity timeout
+            const head1 = snake1[0];
+            const dist1 = Math.abs(head1.x - food.x) + Math.abs(head1.y - food.y);
+            if (dist1 <= FOOD_PROXIMITY_DISTANCE) {
+                if (player1NearFoodSince === null) player1NearFoodSince = gameFrame;
+            } else {
+                player1NearFoodSince = null;
+            }
+            const p1ProximityTimeout = player1NearFoodSince !== null && (gameFrame - player1NearFoodSince) > FOOD_PROXIMITY_TIMEOUT_FRAMES;
+            
+            // Condition 3: Player 2 proximity timeout
+            const head2 = snake2[0];
+            const dist2 = Math.abs(head2.x - food.x) + Math.abs(head2.y - food.y);
+            if (dist2 <= FOOD_PROXIMITY_DISTANCE) {
+                if (player2NearFoodSince === null) player2NearFoodSince = gameFrame;
+            } else {
+                player2NearFoodSince = null;
+            }
+            const p2ProximityTimeout = player2NearFoodSince !== null && (gameFrame - player2NearFoodSince) > FOOD_PROXIMITY_TIMEOUT_FRAMES;
+
+            // Respawn food if any timeout condition is met
+            if (globalTimeout || p1ProximityTimeout || p2ProximityTimeout) {
+                if(globalTimeout) console.log("Food timed out (global 12s). Respawning.");
+                if(p1ProximityTimeout) console.log("Food timed out (P1 proximity 5s). Respawning.");
+                if(p2ProximityTimeout) console.log("Food timed out (P2 proximity 5s). Respawning.");
+                placeFood();
             }
         }
+
         if (gameFrame++ % speed !== 0) return;
         
         if (p1BotActive) nextDirection1 = aiAlgorithms[currentAiIndex].func(snake1, snake2, food, direction1, 1);
