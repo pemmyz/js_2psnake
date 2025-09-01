@@ -71,6 +71,15 @@ canvas {
     font-size: 0.9rem;
 }
 
+/* NEW: Style for gamepad status */
+.gamepad-status {
+    color: #56b6c2;
+    font-weight: bold;
+    font-size: 0.8rem;
+    margin-top: 10px;
+    min-height: 1em; /* Prevents layout shift */
+}
+
 .bot-controls {
     margin-top: 20px;
     border-top: 1px solid #4a505c;
@@ -139,6 +148,7 @@ button.active {
 .instructions {
     margin-top: 20px;
     font-size: 1rem;
+    text-align: center;
     color: #56b6c2;
 }
 

@@ -15,8 +15,10 @@
             <div class="score" id="current-score1">Current: 0</div>
             <div class="faults" id="faults1">Faults: 0</div>
             <div class="controls">
-                <p><strong>Controls:</strong></p>
+                <p><strong>Controls (KB):</strong></p>
                 <p>W, A, S, D</p>
+                <!-- NEW: Gamepad Status -->
+                <p class="gamepad-status" id="p1-gp-status">GP: N/A</p>
             </div>
             <div class="bot-controls">
                 <button id="p1-bot-btn">Bot Mode</button>
@@ -32,8 +34,10 @@
             <div class="score" id="current-score2">Current: 0</div>
             <div class="faults" id="faults2">Faults: 0</div>
             <div class="controls">
-                <p><strong>Controls:</strong></p>
+                <p><strong>Controls (KB):</strong></p>
                 <p>Arrow Keys</p>
+                 <!-- NEW: Gamepad Status -->
+                <p class="gamepad-status" id="p2-gp-status">GP: N/A</p>
             </div>
             <div class="bot-controls">
                 <button id="p2-bot-btn">Bot Mode</button>
@@ -51,6 +55,7 @@
     </div>
     <div class="instructions">
         <p>Change AI -- P1: Keys <strong>1-5</strong> | P2: Keys <strong>6-0</strong></p>
+        <p><strong>Gamepad:</strong> Press any face button (A,B,X,Y) on a controller to assign it.</p>
     </div>
 
     <script src="script.js"></script>

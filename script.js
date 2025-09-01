@@ -2,7 +2,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- DOM Elements ---
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
-    // Renamed and new score elements
     const currentScore1Element = document.getElementById('current-score1');
     const currentScore2Element = document.getElementById('current-score2');
     const totalScore1Element = document.getElementById('total-score1');
@@ -16,6 +15,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const p2BotBtn = document.getElementById('p2-bot-btn');
     const p1AiName = document.getElementById('p1-ai-name');
     const p2AiName = document.getElementById('p2-ai-name');
+    // NEW: Gamepad status elements
+    const p1GpStatusEl = document.getElementById('p1-gp-status');
+    const p2GpStatusEl = document.getElementById('p2-gp-status');
 
     // --- Game Constants & State ---
     const GRID_SIZE = 20;
@@ -56,6 +58,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let p2BotActive = false;
     let p1AiIndex = 1; // Default AI for Player 1 (Greedy)
     let p2AiIndex = 2; // Default AI for Player 2 (Smart Greedy)
+
+    // --- NEW: GAMEPAD STATE ---
+    let playerGamepadAssignments = { p1: null, p2: null };
+    const gamepadAssignmentCooldown = {}; // Prevents rapid assignment on button hold
 
     // --- Game Setup & Initialization ---
     function init() {
@@ -173,7 +179,6 @@ document.addEventListener('DOMContentLoaded', () => {
         player1NearFoodSince = null; // Reset proximity timers
         player2NearFoodSince = null;
     }
-
 
     // --- AI ALGORITHMS ---
     const aiAlgorithms = [
@@ -334,6 +339,102 @@ document.addEventListener('DOMContentLoaded', () => {
         return aiDefensive(snake, otherSnake, food, direction);
     }
     
+    // --- NEW / REWRITTEN: GAMEPAD INPUT HANDLER ---
+    function updateGamepadStatusHUD() {
+        p1GpStatusEl.textContent = playerGamepadAssignments.p1 !== null ? `GP: Connected (ID ${playerGamepadAssignments.p1})` : 'GP: N/A';
+        p2GpStatusEl.textContent = playerGamepadAssignments.p2 !== null ? `GP: Connected (ID ${playerGamepadAssignments.p2})` : 'GP: N/A';
+    }
+
+    function setAssignmentCooldown(gamepadIndex) {
+        gamepadAssignmentCooldown[gamepadIndex] = true;
+        setTimeout(() => { delete gamepadAssignmentCooldown[gamepadIndex]; }, 1000); // 1-second cooldown
+    }
+
+    function applyGamepadControlsToSnake(playerNum, pad) {
+        const DEADZONE = 0.5;
+        const DPAD_UP = 12, DPAD_DOWN = 13, DPAD_LEFT = 14, DPAD_RIGHT = 15;
+        
+        const stickX = pad.axes[0];
+        const stickY = pad.axes[1];
+        const dpadUp = pad.buttons[DPAD_UP]?.pressed;
+        const dpadDown = pad.buttons[DPAD_DOWN]?.pressed;
+        const dpadLeft = pad.buttons[DPAD_LEFT]?.pressed;
+        const dpadRight = pad.buttons[DPAD_RIGHT]?.pressed;
+
+        let currentDirection = (playerNum === 1) ? direction1 : direction2;
+
+        let newDirection = null;
+        if ((stickY < -DEADZONE || dpadUp) && currentDirection.y === 0) {
+            newDirection = { x: 0, y: -1 };
+        } else if ((stickY > DEADZONE || dpadDown) && currentDirection.y === 0) {
+            newDirection = { x: 0, y: 1 };
+        } else if ((stickX < -DEADZONE || dpadLeft) && currentDirection.x === 0) {
+            newDirection = { x: -1, y: 0 };
+        } else if ((stickX > DEADZONE || dpadRight) && currentDirection.x === 0) {
+            newDirection = { x: 1, y: 0 };
+        }
+
+        if (newDirection) {
+            if (playerNum === 1) {
+                nextDirection1 = newDirection;
+            } else {
+                nextDirection2 = newDirection;
+            }
+        }
+    }
+
+    function handleGamepadInput() {
+        const polledPads = navigator.getGamepads ? navigator.getGamepads() : [];
+        if (!polledPads) return;
+
+        // Part 1: Gamepad Assignment Logic
+        const FACE_BUTTON_INDICES = [0, 1, 2, 3]; // A, B, X, Y on standard controllers
+
+        for (let i = 0; i < polledPads.length; i++) {
+            const pad = polledPads[i];
+            if (!pad || gamepadAssignmentCooldown[i]) continue;
+
+            const isAlreadyAssigned = (playerGamepadAssignments.p1 === i || playerGamepadAssignments.p2 === i);
+            const faceButtonPressed = FACE_BUTTON_INDICES.some(index => pad.buttons[index]?.pressed);
+
+            if (faceButtonPressed && !isAlreadyAssigned) {
+                if (playerGamepadAssignments.p1 === null) {
+                    playerGamepadAssignments.p1 = i;
+                    console.log(`Gamepad ${i} assigned to Player 1.`);
+                    updateGamepadStatusHUD();
+                    setAssignmentCooldown(i);
+                } else if (playerGamepadAssignments.p2 === null) {
+                    playerGamepadAssignments.p2 = i;
+                    console.log(`Gamepad ${i} assigned to Player 2.`);
+                    updateGamepadStatusHUD();
+                    setAssignmentCooldown(i);
+                }
+            }
+        }
+        
+        // Part 2: Player Action Logic
+        if (playerGamepadAssignments.p1 !== null && !p1BotActive) {
+            const pad1 = polledPads[playerGamepadAssignments.p1];
+            if (pad1) {
+                applyGamepadControlsToSnake(1, pad1);
+            } else { // Handle disconnection
+                playerGamepadAssignments.p1 = null;
+                updateGamepadStatusHUD();
+            }
+        }
+        
+        if (playerGamepadAssignments.p2 !== null && !p2BotActive) {
+            const pad2 = polledPads[playerGamepadAssignments.p2];
+            if (pad2) {
+                applyGamepadControlsToSnake(2, pad2);
+            } else { // Handle disconnection
+                playerGamepadAssignments.p2 = null;
+                updateGamepadStatusHUD();
+            }
+        }
+    }
+
+    // --- GAME LOOP ---
     function gameLoop() {
         if (!gameRunning) return;
         update();
@@ -342,6 +443,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function update() {
+        handleGamepadInput(); // Poll for gamepad input every frame
+
         const speed = gameMode === 'classic' ? 5 : 2;
         
         if (p1BotActive && p2BotActive && gameRunning) {
@@ -468,6 +571,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => startGame(false), 3000);
     }
 
+    // --- DRAWING FUNCTIONS ---
     function draw() {
         ctx.fillStyle = '#1c1f24';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -496,6 +600,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // --- EVENT LISTENERS ---
     document.addEventListener('keydown', e => {
         // Player 1 AI selection: Keys 1-5
         if (e.key >= '1' && e.key <= '5') {
@@ -531,6 +636,24 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'ArrowLeft': if (direction2.x === 0 && !p2BotActive) nextDirection2 = { x: -1, y: 0 }; break;
             case 'ArrowRight': if (direction2.x === 0 && !p2BotActive) nextDirection2 = { x: 1, y: 0 }; break;
         }
+    });
+
+    // --- NEW: GAMEPAD CONNECTION LISTENERS ---
+    window.addEventListener("gamepadconnected", e => {
+        console.log(`Gamepad connected at index ${e.gamepad.index}: ${e.gamepad.id}.`);
+        updateGamepadStatusHUD(); // Update UI to reflect potential new assignments
+    });
+
+    window.addEventListener("gamepaddisconnected", e => {
+        console.log(`Gamepad disconnected from index ${e.gamepad.index}: ${e.gamepad.id}.`);
+        // Check if the disconnected pad was assigned and reset if it was
+        if (playerGamepadAssignments.p1 === e.gamepad.index) {
+            playerGamepadAssignments.p1 = null;
+        }
+        if (playerGamepadAssignments.p2 === e.gamepad.index) {
+            playerGamepadAssignments.p2 = null;
+        }
+        updateGamepadStatusHUD();
     });
 
     p1BotBtn.addEventListener('click', () => { p1BotActive = !p1BotActive; p1BotBtn.classList.toggle('active', p1BotActive); });
@@ -575,8 +698,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
     }
     
-    // Set initial AI names in the UI
+    // --- INITIALIZE ---
     updateAiChoice(1, p1AiIndex);
     updateAiChoice(2, p2AiIndex);
     startWelcomeCountdown();
+    updateGamepadStatusHUD(); // Initial check for connected gamepads
 });
