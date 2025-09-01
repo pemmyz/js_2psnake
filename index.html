@@ -10,14 +10,13 @@
     <h1>2-Player Snake with AI</h1>
     <div class="game-container">
         <div class="ui-panel">
-            <h2>Player 1</h2>
+            <h2>Player 1 <span class="ready-indicator" id="p1-ready-indicator"></span></h2>
             <div class="total-score" id="total-score1">Total: 0</div>
             <div class="score" id="current-score1">Current: 0</div>
             <div class="faults" id="faults1">Faults: 0</div>
             <div class="controls">
                 <p><strong>Controls (KB):</strong></p>
                 <p>W, A, S, D</p>
-                <!-- NEW: Gamepad Status -->
                 <p class="gamepad-status" id="p1-gp-status">GP: N/A</p>
             </div>
             <div class="bot-controls">
@@ -29,14 +28,13 @@
         <canvas id="gameCanvas" width="600" height="600"></canvas>
 
         <div class="ui-panel">
-            <h2>Player 2</h2>
+            <h2>Player 2 <span class="ready-indicator" id="p2-ready-indicator"></span></h2>
             <div class="total-score" id="total-score2">Total: 0</div>
             <div class="score" id="current-score2">Current: 0</div>
             <div class="faults" id="faults2">Faults: 0</div>
             <div class="controls">
                 <p><strong>Controls (KB):</strong></p>
                 <p>Arrow Keys</p>
-                 <!-- NEW: Gamepad Status -->
                 <p class="gamepad-status" id="p2-gp-status">GP: N/A</p>
             </div>
             <div class="bot-controls">
@@ -51,7 +49,7 @@
             <button id="classic-btn" class="active">Classic Mode</button>
             <button id="modern-btn">Modern Mode</button>
         </div>
-        <button id="start-btn">Start Game</button>
+        <button id="start-btn">New Match</button>
     </div>
     <div class="instructions">
         <p>Change AI -- P1: Keys <strong>1-5</strong> | P2: Keys <strong>6-0</strong></p>

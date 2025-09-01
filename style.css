@@ -46,6 +46,13 @@ canvas {
     color: #e5c07b;
 }
 
+.ready-indicator {
+    color: #98c379; /* Bright green */
+    font-size: 1rem;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
 .total-score {
     font-size: 1.3rem;
     font-weight: bold;
@@ -71,7 +78,6 @@ canvas {
     font-size: 0.9rem;
 }
 
-/* NEW: Style for gamepad status */
 .gamepad-status {
     color: #56b6c2;
     font-weight: bold;
